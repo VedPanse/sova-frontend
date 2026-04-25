@@ -27,16 +27,17 @@ object ProfileValidation {
 
     fun optionalDateError(value: String, label: String): String? {
         if (value.isBlank()) return null
-        parseDate(value) ?: return "Use a real $label date."
-        return null
+        val date = parseDate(value) ?: return "Use a real $label date."
+        val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+        return if (date > today) "$label cannot be in the future." else null
     }
 
-    fun dateError(value: String, label: String): String? =
-        when {
-            value.isBlank() -> "$label is required."
-            parseDate(value) == null -> "Use a real $label date."
-            else -> null
-        }
+    fun dateError(value: String, label: String): String? {
+        if (value.isBlank()) return "$label is required."
+        val date = parseDate(value) ?: return "Use a real $label date."
+        val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+        return if (date > today) "$label cannot be in the future." else null
+    }
 
     fun requiredError(value: String, label: String): String? =
         if (value.trim().isEmpty()) "$label is required." else null

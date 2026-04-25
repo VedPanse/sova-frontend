@@ -98,6 +98,26 @@ fun CareCouncilPanel(
                     }
                 }
             }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = HealthSpacing.Sm,
+                        top = HealthSpacing.Sm,
+                        end = HealthSpacing.Sm,
+                    ),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Tap a specialist to start a check-in.",
+                    color = HealthColors.TextSecondary,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()

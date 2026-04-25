@@ -197,15 +197,29 @@ private fun BasicInformationEditor(
     onSave: (UserProfile, MedicalProfile) -> Unit,
 ) {
     var dobDigits by remember(user) { mutableStateOf(user.dob.filter { it.isDigit() }.take(8)) }
+    var dobFutureAttempted by remember(user) { mutableStateOf(false) }
     var sex by remember(user) { mutableStateOf(user.sex) }
     var address by remember(user) { mutableStateOf(user.address.orEmpty()) }
     val dob = formatDateOfBirth(dobDigits)
-    val dobError = ProfileValidation.dobError(dob)
+    val dobError = if (dobFutureAttempted) "Date of birth cannot be in the future." else ProfileValidation.dobError(dob)
     val sexError = ProfileValidation.requiredError(sex, "Sex")
-    val canSave = listOf(dobError, sexError).all { it == null }
+    val canSave = !dobFutureAttempted && listOf(dobError, sexError).all { it == null }
 
     JournalLabel("Basic information")
-    HealthDateField("Date of birth", dobDigits, { dobDigits = it }, helperText = "MM/DD/YYYY", errorText = dobError)
+    HealthDateField(
+        "Date of birth",
+        dobDigits,
+        {
+            if (it.isCompleteFutureDate(::formatDateOfBirth, ProfileValidation::dobError)) {
+                dobFutureAttempted = true
+            } else {
+                dobFutureAttempted = false
+                dobDigits = it
+            }
+        },
+        helperText = "MM/DD/YYYY",
+        errorText = dobError,
+    )
     HealthSegmentedSelector("Sex", listOf("Female", "Male", "Other", "Prefer not to say"), sex, { sex = it }, errorText = sexError)
     HealthTextField("Address", address, { address = it }, helperText = "Optional")
     SectionEditActions(
@@ -235,17 +249,35 @@ private fun MedicalInformationEditor(
     var allergies by remember(medical) { mutableStateOf(medical.allergies.joinToString(", ")) }
     var surgery by remember(user) { mutableStateOf(user.surgery.orEmpty()) }
     var dischargeDigits by remember(user) { mutableStateOf(user.dischargeDate.orEmpty().filter { it.isDigit() }.take(8)) }
+    var dischargeFutureAttempted by remember(user) { mutableStateOf(false) }
     val dischargeDate = formatDateOfBirth(dischargeDigits)
     val surgeryError = ProfileValidation.requiredError(surgery, "Surgery")
-    val dischargeDateError = ProfileValidation.dateError(dischargeDate, "Discharge date")
+    val dischargeDateError = if (dischargeFutureAttempted) {
+        "Discharge date cannot be in the future."
+    } else {
+        ProfileValidation.dateError(dischargeDate, "Discharge date")
+    }
 
     JournalLabel("Medical information")
     ChipInput("Current medications", medications, { medications = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(medications))
     ChipInput("Allergies", allergies, { allergies = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(allergies))
     HealthTextField("Surgery", surgery, { surgery = it }, errorText = surgeryError)
-    HealthDateField("Discharge date", dischargeDigits, { dischargeDigits = it }, helperText = "MM/DD/YYYY", errorText = dischargeDateError)
+    HealthDateField(
+        "Discharge date",
+        dischargeDigits,
+        {
+            if (it.isCompleteFutureDate(::formatDateOfBirth) { value -> ProfileValidation.dateError(value, "Discharge date") }) {
+                dischargeFutureAttempted = true
+            } else {
+                dischargeFutureAttempted = false
+                dischargeDigits = it
+            }
+        },
+        helperText = "MM/DD/YYYY",
+        errorText = dischargeDateError,
+    )
     SectionEditActions(
-        canSave = surgeryError == null && dischargeDateError == null,
+        canSave = surgeryError == null && dischargeDateError == null && !dischargeFutureAttempted,
         onCancel = onCancel,
         onSave = {
             onSave(
@@ -358,3 +390,6 @@ private fun formatDateOfBirth(digits: String): String {
         else -> "${cleaned.take(2)}/${cleaned.drop(2).take(2)}/${cleaned.drop(4)}"
     }
 }
+
+private fun String.isCompleteFutureDate(format: (String) -> String, validator: (String) -> String?): Boolean =
+    length == 8 && validator(format(this))?.contains("future", ignoreCase = true) == true

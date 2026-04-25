@@ -34,16 +34,22 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
+import org.sova.data.AgentDeliberationApi
+import org.sova.data.AgentDeliberationEvent
 import org.sova.data.DisplayContent
 import org.sova.data.PatientProfileApi
 import org.sova.data.PatientProfilePersistence
 import org.sova.data.VitalsApi
+import org.sova.data.toAgentDeliberationStartRequest
 import org.sova.data.toPatientProfilePayload
 import org.sova.components.JournalTopBar
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.logic.SimulationEngine
+import org.sova.model.AgentDeliberationDecision
+import org.sova.model.AgentDeliberationMessage
+import org.sova.model.AgentDeliberationState
 import org.sova.model.MedicalProfile
 import org.sova.model.SimulationResult
 import org.sova.model.UserProfile
@@ -70,6 +76,8 @@ fun AppNavigation() {
     var medicalProfile by remember { mutableStateOf<MedicalProfile?>(null) }
     var vitals by remember { mutableStateOf(Vitals()) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
+    var deliberationState by remember { mutableStateOf<AgentDeliberationState>(AgentDeliberationState.Idle) }
+    var deliberationRefreshKey by remember { mutableStateOf(0) }
 
     LaunchedEffect(patientId) {
         val draft = PatientProfilePersistence.loadDraft()
@@ -102,6 +110,60 @@ fun AppNavigation() {
             vitals = latestVitals.toVitals()
         }
         loaded = true
+    }
+
+    LaunchedEffect(loaded, onboarded, userProfile?.patientId, deliberationRefreshKey) {
+        val user = userProfile ?: return@LaunchedEffect
+        val medical = medicalProfile ?: MedicalProfile(emptyList(), emptyList(), emptyList())
+        if (!loaded || !onboarded) return@LaunchedEffect
+
+        deliberationState = AgentDeliberationState.Starting
+        val messages = mutableListOf<AgentDeliberationMessage>()
+        var convergence = 0.0
+        var decision: AgentDeliberationDecision? = null
+        var activeAgent: String? = null
+
+        runCatching {
+            val request = user.toAgentDeliberationStartRequest(medical, vitals)
+            val session = AgentDeliberationApi.start(request)
+            deliberationState = AgentDeliberationState.Streaming(messages = emptyList())
+            AgentDeliberationApi.observe(session.patientId).collect { event ->
+                when (event) {
+                    is AgentDeliberationEvent.Started -> {
+                        deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
+                    }
+                    is AgentDeliberationEvent.Message -> {
+                        messages += event.value
+                        activeAgent = event.value.agentName
+                        deliberationState = AgentDeliberationState.Streaming(
+                            messages = messages.toList(),
+                            convergence = convergence,
+                            activeAgent = activeAgent,
+                        )
+                    }
+                    is AgentDeliberationEvent.Convergence -> {
+                        convergence = event.value
+                        deliberationState = AgentDeliberationState.Streaming(
+                            messages = messages.toList(),
+                            convergence = convergence,
+                            activeAgent = activeAgent,
+                        )
+                    }
+                    is AgentDeliberationEvent.Decision -> {
+                        decision = event.value
+                        deliberationState = AgentDeliberationState.Completed(messages = messages.toList(), decision = decision)
+                    }
+                    is AgentDeliberationEvent.Done -> {
+                        deliberationState = AgentDeliberationState.Completed(messages = messages.toList(), decision = decision)
+                    }
+                    is AgentDeliberationEvent.Error -> {
+                        deliberationState = AgentDeliberationState.Failed(event.message)
+                    }
+                }
+            }
+        }.onFailure {
+            deliberationState = AgentDeliberationState.Failed("Agent service is unavailable. Retry when the backend is running.")
+        }
     }
 
     BoxWithConstraints(
@@ -157,6 +219,8 @@ fun AppNavigation() {
                         vitals = vitals,
                         route = route,
                         simulationRun = simulationRun,
+                        deliberationState = deliberationState,
+                        onRefreshDeliberation = { deliberationRefreshKey += 1 },
                         onProfileSave = { user, medical ->
                             val payload = user.toPatientProfilePayload(medical)
                             PatientProfilePersistence.saveDraft(payload)
@@ -190,6 +254,8 @@ fun AppNavigation() {
                         vitals = vitals,
                         route = route,
                         simulationRun = simulationRun,
+                        deliberationState = deliberationState,
+                        onRefreshDeliberation = { deliberationRefreshKey += 1 },
                         onProfileSave = { user, medical ->
                             val payload = user.toPatientProfilePayload(medical)
                             PatientProfilePersistence.saveDraft(payload)
@@ -225,6 +291,8 @@ private fun RouteContent(
     vitals: Vitals,
     route: AppRoute,
     simulationRun: Boolean,
+    deliberationState: AgentDeliberationState,
+    onRefreshDeliberation: () -> Unit,
     onProfileSave: (UserProfile, MedicalProfile) -> Unit,
     onRoute: (AppRoute) -> Unit,
     onRunSimulation: () -> Unit,
@@ -253,6 +321,8 @@ private fun RouteContent(
             user = user,
             medical = medical,
             vitals = vitals,
+            deliberationState = deliberationState,
+            onRefreshDeliberation = onRefreshDeliberation,
             onConversation = { onRoute(AppRoute.Conversation) },
             modifier = Modifier.fillMaxSize(),
         )

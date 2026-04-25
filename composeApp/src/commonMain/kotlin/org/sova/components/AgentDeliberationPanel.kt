@@ -1,7 +1,14 @@
 package org.sova.components
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,10 +20,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -34,6 +51,7 @@ fun AgentDeliberationPanel(
     decision: AgentDeliberationDecision? = null,
     errorText: String? = null,
     onRetry: (() -> Unit)? = null,
+    onRefresh: (() -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -55,17 +73,25 @@ fun AgentDeliberationPanel(
                     JournalLabel("Live deliberation")
                     Text("AI specialists are debating the safest next step.", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
                 }
-                Surface(
-                    color = HealthColors.AccentSoft,
-                    shape = HealthShapes.Pill,
-                    border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = statusText,
-                        modifier = Modifier.padding(horizontal = HealthSpacing.Sm, vertical = HealthSpacing.Xs),
-                        color = HealthColors.Accent,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
+                    Surface(
+                        color = HealthColors.AccentSoft,
+                        shape = HealthShapes.Pill,
+                        border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
+                    ) {
+                        Text(
+                            text = statusText,
+                            modifier = Modifier.padding(horizontal = HealthSpacing.Sm, vertical = HealthSpacing.Xs),
+                            color = HealthColors.Accent,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                    if (onRefresh != null) {
+                        RefreshIconButton(onClick = onRefresh)
+                    }
                 }
             }
 
@@ -103,6 +129,47 @@ fun AgentDeliberationPanel(
             decision?.let {
                 DecisionSummary(it)
             }
+        }
+    }
+}
+
+@Composable
+private fun RefreshIconButton(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(HealthSpacing.Xl)
+            .clip(HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable(onClick = onClick),
+        color = HealthColors.SurfaceSubtle,
+        shape = HealthShapes.Pill,
+        border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
+    ) {
+        Canvas(modifier = Modifier.padding(HealthSpacing.Xs)) {
+            val stroke = Stroke(width = HealthSpacing.Stroke.toPx() * 2f, cap = StrokeCap.Round)
+            drawArc(
+                color = HealthColors.Accent,
+                startAngle = 35f,
+                sweepAngle = 285f,
+                useCenter = false,
+                topLeft = Offset(size.width * 0.18f, size.height * 0.18f),
+                size = Size(size.width * 0.64f, size.height * 0.64f),
+                style = stroke,
+            )
+            drawLine(
+                color = HealthColors.Accent,
+                start = Offset(size.width * 0.78f, size.height * 0.20f),
+                end = Offset(size.width * 0.78f, size.height * 0.42f),
+                strokeWidth = stroke.width,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = HealthColors.Accent,
+                start = Offset(size.width * 0.78f, size.height * 0.20f),
+                end = Offset(size.width * 0.58f, size.height * 0.24f),
+                strokeWidth = stroke.width,
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
@@ -182,6 +249,34 @@ private fun TypingIndicator(agentName: String) {
             color = HealthColors.TextSecondary,
             style = MaterialTheme.typography.bodyLarge,
         )
+        BouncingDots()
+    }
+}
+
+@Composable
+private fun BouncingDots() {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(3) { index ->
+            val transition = rememberInfiniteTransition(label = "deliberation-dot-$index")
+            val offset by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = -6f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 420, delayMillis = index * 120),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "deliberation-dot-offset-$index",
+            )
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .graphicsLayer { translationY = offset }
+                    .background(HealthColors.Accent, HealthShapes.Pill),
+            )
+        }
     }
 }
 
@@ -199,9 +294,6 @@ private fun DecisionSummary(decision: AgentDeliberationDecision) {
         ) {
             JournalLabel("Final recommendation")
             Text(decision.recommendation, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
-            if (decision.actions.isNotEmpty()) {
-                Text(decision.actions.joinToString(" • "), color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
-            }
         }
     }
 }

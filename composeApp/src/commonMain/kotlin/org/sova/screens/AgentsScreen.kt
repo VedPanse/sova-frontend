@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,21 +36,19 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import org.sova.audio.MicrophoneAccess
 import org.sova.audio.MicrophoneAccessState
-import org.sova.data.AgentDeliberationApi
-import org.sova.data.toAgentDeliberationStartRequest
 import org.sova.components.AgentDeliberationPanel
 import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
+import org.sova.components.SecondaryButton
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.model.Agent
-import org.sova.model.AgentDeliberationDecision
-import org.sova.model.AgentDeliberationMessage
 import org.sova.model.AgentDeliberationState
 import org.sova.model.MedicalProfile
 import org.sova.model.UserProfile
@@ -61,56 +60,12 @@ fun AgentsScreen(
     user: UserProfile,
     medical: MedicalProfile,
     vitals: Vitals,
+    deliberationState: AgentDeliberationState,
+    onRefreshDeliberation: () -> Unit,
     onConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var activeSpecialist by remember { mutableStateOf<String?>(null) }
-    var deliberationState by remember { mutableStateOf<AgentDeliberationState>(AgentDeliberationState.Idle) }
-    var retryKey by remember { mutableStateOf(0) }
-
-    LaunchedEffect(user.patientId, retryKey) {
-        deliberationState = AgentDeliberationState.Starting
-        val messages = mutableListOf<AgentDeliberationMessage>()
-        var convergence = 0.0
-        var decision: AgentDeliberationDecision? = null
-
-        runCatching {
-            val request = user.toAgentDeliberationStartRequest(medical, vitals)
-            val session = AgentDeliberationApi.start(request)
-            deliberationState = AgentDeliberationState.Streaming(messages = emptyList())
-            AgentDeliberationApi.observe(session.patientId).collect { event ->
-                when (event) {
-                    is org.sova.data.AgentDeliberationEvent.Started -> {
-                        deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
-                    }
-                    is org.sova.data.AgentDeliberationEvent.Message -> {
-                        messages += event.value
-                        deliberationState = AgentDeliberationState.Streaming(
-                            messages = messages.toList(),
-                            convergence = convergence,
-                            activeAgent = event.value.agentName,
-                        )
-                    }
-                    is org.sova.data.AgentDeliberationEvent.Convergence -> {
-                        convergence = event.value
-                        deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
-                    }
-                    is org.sova.data.AgentDeliberationEvent.Decision -> {
-                        decision = event.value
-                        deliberationState = AgentDeliberationState.Completed(messages = messages.toList(), decision = decision)
-                    }
-                    is org.sova.data.AgentDeliberationEvent.Done -> {
-                        deliberationState = AgentDeliberationState.Completed(messages = messages.toList(), decision = decision)
-                    }
-                    is org.sova.data.AgentDeliberationEvent.Error -> {
-                        deliberationState = AgentDeliberationState.Failed(event.message)
-                    }
-                }
-            }
-        }.onFailure {
-            deliberationState = AgentDeliberationState.Failed("Agent service is unavailable. Retry when the backend is running.")
-        }
-    }
 
     activeSpecialist?.let { specialist ->
         SpecialistCallView(
@@ -125,14 +80,14 @@ fun AgentsScreen(
         if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
             AgentsWide(
                 deliberationState = deliberationState,
-                onRetry = { retryKey += 1 },
+                onRetry = onRefreshDeliberation,
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
             AgentsCompact(
                 deliberationState = deliberationState,
-                onRetry = { retryKey += 1 },
+                onRetry = onRefreshDeliberation,
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -152,7 +107,7 @@ private fun AgentsCompact(
             AiCareHeader()
         }
         item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
-        item { DeliberationSection(deliberationState, onRetry) }
+        item { DeliberationSection(deliberationState, onRetry, onRetry) }
     }
 }
 
@@ -165,18 +120,8 @@ private fun AgentsWide(
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item { AiCareHeader() }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(0.42f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                    CareCouncilPanel(onSpecialistSelected = onSpecialistSelected)
-                }
-                DeliberationSection(
-                    state = deliberationState,
-                    onRetry = onRetry,
-                    modifier = Modifier.weight(0.58f),
-                )
-            }
-        }
+        item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
+        item { DeliberationSection(state = deliberationState, onRetry = onRetry, onRefresh = onRetry) }
     }
 }
 
@@ -184,6 +129,7 @@ private fun AgentsWide(
 private fun DeliberationSection(
     state: AgentDeliberationState,
     onRetry: () -> Unit,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -198,7 +144,7 @@ private fun DeliberationSection(
             messages = state.messages,
             modifier = modifier,
             statusText = "Live",
-            activeAgent = state.activeAgent,
+            activeAgent = state.activeAgent ?: "Sova council",
             convergence = state.convergence,
         )
         is AgentDeliberationState.Completed -> AgentDeliberationPanel(
@@ -206,6 +152,7 @@ private fun DeliberationSection(
             modifier = modifier,
             statusText = "Complete",
             decision = state.decision,
+            onRefresh = onRefresh,
         )
         is AgentDeliberationState.Failed -> AgentDeliberationPanel(
             messages = emptyList(),
@@ -226,9 +173,15 @@ fun SpecialistCallView(
     var connected by remember(specialist) { mutableStateOf(false) }
     var muted by remember(specialist) { mutableStateOf(false) }
     var microphoneAccess by remember(specialist) { mutableStateOf<MicrophoneAccessState?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    fun requestMicrophone() {
+        coroutineScope.launch {
+            microphoneAccess = MicrophoneAccess.request()
+            muted = microphoneAccess != MicrophoneAccessState.Granted
+        }
+    }
+
     LaunchedEffect(specialist) {
-        microphoneAccess = MicrophoneAccess.request()
-        muted = microphoneAccess != MicrophoneAccessState.Granted
         delay(3000)
         connected = true
     }
@@ -249,8 +202,11 @@ fun SpecialistCallView(
                                 onToggleMute = {
                                     if (microphoneAccess == MicrophoneAccessState.Granted) {
                                         muted = !muted
+                                    } else {
+                                        requestMicrophone()
                                     }
                                 },
+                                onRequestMicrophone = ::requestMicrophone,
                                 modifier = Modifier.weight(0.80f),
                             )
                             LiveCaptionCard(specialist, Modifier.weight(0.20f))
@@ -264,8 +220,11 @@ fun SpecialistCallView(
                                 onToggleMute = {
                                     if (microphoneAccess == MicrophoneAccessState.Granted) {
                                         muted = !muted
+                                    } else {
+                                        requestMicrophone()
                                     }
                                 },
+                                onRequestMicrophone = ::requestMicrophone,
                             )
                             LiveCaptionCard(specialist)
                         }
@@ -356,6 +315,7 @@ private fun ConnectedCallCard(
     muted: Boolean,
     microphoneAccess: MicrophoneAccessState?,
     onToggleMute: () -> Unit,
+    onRequestMicrophone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     JournalCard(modifier = modifier) {
@@ -371,14 +331,20 @@ private fun ConnectedCallCard(
             Text("Secure voice check-in in progress.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             MuteToggleButton(
                 muted = muted,
-                enabled = microphoneAccess == MicrophoneAccessState.Granted,
+                enabled = true,
                 onClick = onToggleMute,
             )
+            if (microphoneAccess != MicrophoneAccessState.Granted) {
+                SecondaryButton(
+                    text = if (microphoneAccess == MicrophoneAccessState.Denied) "Try microphone again" else "Enable microphone",
+                    onClick = onRequestMicrophone,
+                )
+            }
             val microphoneLabel = when (microphoneAccess) {
                 MicrophoneAccessState.Granted -> if (muted) "Microphone muted" else "Microphone on"
                 MicrophoneAccessState.Denied -> "Microphone permission needed"
                 MicrophoneAccessState.Unavailable -> "Microphone unavailable"
-                null -> "Requesting microphone"
+                null -> "Microphone off"
             }
             JournalLabel(
                 microphoneLabel,

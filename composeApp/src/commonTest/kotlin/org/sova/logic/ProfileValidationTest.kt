@@ -12,6 +12,7 @@ class ProfileValidationTest {
         assertNull(ProfileValidation.dobError("02/14/1988"))
         assertEquals("Use a real date, like 02/14/1988.", ProfileValidation.dobError("02/31/1988"))
         assertNotNull(ProfileValidation.dobError("01/01/3000"))
+        assertEquals("Discharge date cannot be in the future.", ProfileValidation.dateError("01/01/3000", "Discharge date"))
     }
 
     @Test

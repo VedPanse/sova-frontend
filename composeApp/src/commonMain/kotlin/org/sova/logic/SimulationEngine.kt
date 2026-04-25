@@ -63,20 +63,59 @@ object SimulationEngine {
             summary = summary,
             reasons = reasons.ifEmpty { listOf("No concerning signal has been reported yet") },
             recommendation = recommendation,
-            trajectory = buildTrajectory(risk),
+            trajectory = buildTrajectory(risk, score, vitals),
         )
     }
 
-    private fun buildTrajectory(riskLevel: RiskLevel): Trajectory {
-        val points = when (riskLevel) {
-            RiskLevel.Low -> listOf(RiskLevel.Low, RiskLevel.Low, RiskLevel.Low)
-            RiskLevel.Moderate -> listOf(RiskLevel.Low, RiskLevel.Moderate, RiskLevel.Moderate)
-            RiskLevel.High -> listOf(RiskLevel.Moderate, RiskLevel.High, RiskLevel.High)
+    private fun buildTrajectory(riskLevel: RiskLevel, score: Int, vitals: Vitals): Trajectory {
+        val currentRisk = currentRiskScore(score, vitals)
+        val scores = when (riskLevel) {
+            RiskLevel.Low -> listOf(
+                currentRisk,
+                currentRisk + 5,
+                currentRisk + 2,
+                currentRisk + 6,
+                currentRisk + 3,
+            ).map { it.coerceIn(8, 34) }
+            RiskLevel.Moderate -> listOf(
+                currentRisk.coerceAtLeast(36),
+                currentRisk + 10,
+                currentRisk + 16,
+                currentRisk + 12,
+                currentRisk + 7,
+            ).map { it.coerceIn(36, 67) }
+            RiskLevel.High -> listOf(
+                currentRisk.coerceAtLeast(68),
+                currentRisk + 12,
+                currentRisk + 20,
+                currentRisk + 15,
+                currentRisk + 9,
+            ).map { it.coerceIn(68, 95) }
         }
         return Trajectory(
-            points = listOf("Now", "2h", "6h").mapIndexed { index, label ->
-                TrajectoryPoint(label = label, riskLevel = points[index])
+            points = listOf("Now", "1h", "2h", "4h", "6h").mapIndexed { index, label ->
+                TrajectoryPoint(
+                    label = label,
+                    riskLevel = riskLevelForScore(scores[index]),
+                    riskScore = scores[index],
+                )
             },
         )
     }
+
+    private fun currentRiskScore(score: Int, vitals: Vitals): Int {
+        var risk = 14 + score * 10
+        vitals.heartRate?.let { risk += ((it - 72) / 8).coerceIn(-2, 5) }
+        vitals.spo2?.let { risk += ((97 - it) * 3).coerceIn(-3, 12) }
+        vitals.hrv?.let { risk += ((52 - it) / 4).coerceIn(-3, 8) }
+        vitals.sleepHours?.let { risk += ((7.0 - it) * 3).toInt().coerceIn(-3, 9) }
+        return risk.coerceIn(8, 95)
+    }
+
+    private fun riskLevelForScore(score: Int): RiskLevel =
+        when {
+            score >= 68 -> RiskLevel.High
+            score >= 36 -> RiskLevel.Moderate
+            else -> RiskLevel.Low
+        }
 }
