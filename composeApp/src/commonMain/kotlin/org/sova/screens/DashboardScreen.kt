@@ -31,6 +31,8 @@ import org.sova.components.PatientTrajectoryGraph
 import org.sova.components.PrimaryButton
 import org.sova.components.SecondaryButton
 import org.sova.components.StabilityIndex
+import org.sova.components.SovaMascotCompanion
+import org.sova.components.SovaMascotMood
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -95,6 +97,14 @@ private fun DashboardCompact(
         item {
             StatusHeader(user, result)
         }
+        if (result.riskLevel != RiskLevel.High) {
+            item {
+                SovaMascotCompanion(
+                    message = "I’m watching quietly. Nothing urgent needs your attention right now.",
+                    mood = if (result.riskLevel == RiskLevel.Low) SovaMascotMood.Smile else SovaMascotMood.Calm,
+                )
+            }
+        }
         item { CurrentVitalsCard(vitals) }
         item { RecommendationCard(user, result, onSpecialistSelected) }
         item { LiveInsightsPanel(user.patientId, vitals) }
@@ -124,6 +134,14 @@ private fun DashboardWide(
                 TrajectoryCard(
                     trajectory = result.trajectory,
                     modifier = Modifier.weight(0.85f),
+                )
+            }
+        }
+        if (result.riskLevel != RiskLevel.High) {
+            item {
+                SovaMascotCompanion(
+                    message = "I’ll stay nearby while your signals keep updating.",
+                    mood = if (result.riskLevel == RiskLevel.Low) SovaMascotMood.Smile else SovaMascotMood.Calm,
                 )
             }
         }

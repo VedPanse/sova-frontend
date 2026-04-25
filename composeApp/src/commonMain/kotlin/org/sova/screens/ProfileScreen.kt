@@ -37,6 +37,8 @@ import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
 import org.sova.components.PrimaryButton
 import org.sova.components.SecondaryButton
+import org.sova.components.SovaMascotCompanion
+import org.sova.components.SovaMascotMood
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -88,6 +90,14 @@ private fun ProfileSummaryScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                 Text("Patient profile", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge.copy(fontStyle = FontStyle.Italic))
+            }
+        }
+        if (editingSection == null) {
+            item {
+                SovaMascotCompanion(
+                    message = "I’ll help keep these details tidy for future care handoffs.",
+                    mood = SovaMascotMood.Peek,
+                )
             }
         }
         item {
