@@ -11,25 +11,33 @@ object SimulationEngine {
         val reasons = mutableListOf<String>()
         var score = 0
 
-        if (!vitals.medicationTaken) {
+        if (vitals.medicationTaken == false) {
             score += 2
             reasons += "Medication was missed"
         }
-        if (vitals.hrv < 45) {
-            score += 1
-            reasons += "Recovery is lower than usual"
+        vitals.hrv?.let {
+            if (it < 45) {
+                score += 1
+                reasons += "Recovery is lower than usual"
+            }
         }
-        if (vitals.sleepHours < 6.0) {
-            score += 1
-            reasons += "Sleep was short"
+        vitals.sleepHours?.let {
+            if (it < 6.0) {
+                score += 1
+                reasons += "Sleep was short"
+            }
         }
-        if (vitals.heartRate < 50 || vitals.heartRate > 105) {
-            score += 2
-            reasons += "Heart rate is outside your usual range"
+        vitals.heartRate?.let {
+            if (it < 50 || it > 105) {
+                score += 2
+                reasons += "Heart rate is outside your usual range"
+            }
         }
-        if (vitals.spo2 < 94) {
-            score += 2
-            reasons += "Oxygen is lower than expected"
+        vitals.spo2?.let {
+            if (it < 94) {
+                score += 2
+                reasons += "Oxygen is lower than expected"
+            }
         }
 
         val risk = when {
@@ -53,7 +61,7 @@ object SimulationEngine {
         return SimulationResult(
             riskLevel = risk,
             summary = summary,
-            reasons = reasons.ifEmpty { listOf("Signals are within your expected range") },
+            reasons = reasons.ifEmpty { listOf("No concerning signal has been reported yet") },
             recommendation = recommendation,
             trajectory = buildTrajectory(risk),
         )

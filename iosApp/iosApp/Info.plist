@@ -4,5 +4,7 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sova uses the microphone for secure voice check-ins with AI care specialists.</string>
 </dict>
 </plist>

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,6 +28,7 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -43,33 +45,58 @@ fun CareCouncilPanel(
         border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
     ) {
         Column {
-            Row(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(HealthColors.AccentSoft)
                     .padding(HealthSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(HealthSpacing.Xl)
-                        .background(HealthColors.Accent, HealthShapes.Pill),
-                    contentAlignment = Alignment.Center,
+                val compact = maxWidth < 440.dp
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
                 ) {
-                    Text("5", color = HealthColors.Surface, style = MaterialTheme.typography.titleLarge)
+                    Box(
+                        modifier = Modifier
+                            .size(HealthSpacing.Xl)
+                            .background(HealthColors.Accent, HealthShapes.Pill),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("5", color = HealthColors.Surface, style = MaterialTheme.typography.titleLarge)
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2),
+                    ) {
+                        Text(
+                            text = "Care Intelligence Team",
+                            color = HealthColors.Ink,
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = if (compact) 2 else 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (compact) {
+                            Text(
+                                text = "AI specialist council",
+                                color = HealthColors.Accent,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    if (!compact) {
+                        Text(
+                            text = "AI specialist council",
+                            color = HealthColors.Accent,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
-                Text(
-                    text = "Care Intelligence Team",
-                    modifier = Modifier.weight(1f),
-                    color = HealthColors.Ink,
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    text = "AI specialist council",
-                    color = HealthColors.Accent,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
             }
             LazyRow(
                 modifier = Modifier

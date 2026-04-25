@@ -27,11 +27,10 @@ import androidx.compose.ui.platform.LocalUriHandler
 import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
+import org.sova.components.PatientTrajectoryGraph
 import org.sova.components.PrimaryButton
-import org.sova.components.RecoveryCurve
 import org.sova.components.SecondaryButton
 import org.sova.components.StabilityIndex
-import org.sova.components.VitalJournalCard
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -94,12 +93,12 @@ private fun DashboardCompact(
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
         item {
-            StatusHeader(user)
+            StatusHeader(user, result)
         }
         item { CurrentVitalsCard(vitals) }
         item { RecommendationCard(user, result, onSpecialistSelected) }
-        item { LiveInsightsPanel() }
-        item { TrajectoryCard() }
+        item { LiveInsightsPanel(user.patientId, vitals) }
+        item { TrajectoryCard(result.trajectory) }
     }
 }
 
@@ -123,6 +122,7 @@ private fun DashboardWide(
                     modifier = Modifier.weight(1.35f),
                 )
                 TrajectoryCard(
+                    trajectory = result.trajectory,
                     modifier = Modifier.weight(0.85f),
                 )
             }
@@ -136,7 +136,7 @@ private fun DashboardWide(
                 verticalAlignment = Alignment.Top,
             ) {
                 CurrentVitalsCard(vitals, modifier = Modifier.weight(1.35f).fillMaxHeight())
-                LiveInsightsPanel(modifier = Modifier.weight(0.85f).fillMaxHeight())
+                LiveInsightsPanel(user.patientId, vitals, modifier = Modifier.weight(0.85f).fillMaxHeight())
             }
         }
     }
@@ -167,7 +167,7 @@ private fun DesktopStatusCard(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     JournalLabel("Current status")
                     Text(
-                        "${user.firstName} shows remarkable recovery stability.",
+                        "${user.firstName} is being monitored.",
                         color = HealthColors.TextPrimary,
                         style = MaterialTheme.typography.headlineLarge,
                     )
@@ -177,7 +177,7 @@ private fun DesktopStatusCard(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
-                StabilityIndex(score = 94, modifier = Modifier.weight(0.45f))
+                StabilityIndex(score = stabilityScore(result.riskLevel), modifier = Modifier.weight(0.45f))
             }
             RecommendationCard(user, result, onSpecialistSelected)
         }
@@ -261,17 +261,24 @@ private fun recommendationCopy(result: SimulationResult): RecommendationCopy =
     }
 
 @Composable
-private fun StatusHeader(user: UserProfile) {
+private fun StatusHeader(user: UserProfile, result: SimulationResult) {
     Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
         JournalLabel("Current status")
         Text(
-            "${user.firstName} shows remarkable recovery stability.",
+            "${user.firstName} is being monitored.",
             color = HealthColors.TextPrimary,
             style = MaterialTheme.typography.titleLarge,
         )
-        StabilityIndex(score = 94, modifier = Modifier.padding(vertical = HealthSpacing.Xs))
+        StabilityIndex(score = stabilityScore(result.riskLevel), modifier = Modifier.padding(vertical = HealthSpacing.Xs))
     }
 }
+
+private fun stabilityScore(riskLevel: RiskLevel): Int =
+    when (riskLevel) {
+        RiskLevel.Low -> 92
+        RiskLevel.Moderate -> 74
+        RiskLevel.High -> 48
+    }
 
 @Composable
 private fun CurrentVitalsCard(vitals: Vitals, modifier: Modifier = Modifier) {
@@ -293,19 +300,33 @@ private fun CurrentVitalsCard(vitals: Vitals, modifier: Modifier = Modifier) {
             ) {
                 JournalLabel("Current vitals", modifier = Modifier.weight(1f))
                 Text(
-                    if (vitals.medicationTaken) "Medication ok" else "Medication missed",
-                    color = if (vitals.medicationTaken) HealthColors.Success else HealthColors.Warning,
+                    when (vitals.medicationTaken) {
+                        true -> "Medication ok"
+                        false -> "Medication missed"
+                        null -> "Medication not reported"
+                    },
+                    color = when (vitals.medicationTaken) {
+                        true -> HealthColors.Success
+                        false -> HealthColors.Warning
+                        null -> HealthColors.TextSecondary
+                    },
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                VitalSummary("Heart", "${vitals.heartRate}", "bpm", heartRateColor(vitals.heartRate), Modifier.weight(1f))
-                VitalSummary("HRV", "${vitals.hrv}", "ms", hrvColor(vitals.hrv), Modifier.weight(1f))
-                VitalSummary("Oxygen", "${vitals.spo2}", "%", oxygenColor(vitals.spo2), Modifier.weight(1f))
+                VitalSummary("Heart", vitals.heartRate?.toString() ?: "--", "bpm", heartRateColor(vitals.heartRate), Modifier.weight(1f))
+                VitalSummary("HRV", vitals.hrv?.toString() ?: "--", "ms", hrvColor(vitals.hrv), Modifier.weight(1f))
+                VitalSummary("Oxygen", vitals.spo2?.toString() ?: "--", "%", oxygenColor(vitals.spo2), Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                VitalSummary("Sleep", "${vitals.sleepHours}", "hr", sleepColor(vitals.sleepHours), Modifier.weight(1f))
-                VitalSummary("Temp", "98.6", "F", HealthColors.Success, Modifier.weight(1f))
+                VitalSummary("Sleep", vitals.sleepHours?.toString() ?: "--", "hr", sleepColor(vitals.sleepHours), Modifier.weight(1f))
+                VitalSummary("Temp", vitals.temperature?.let { oneDecimal(it) } ?: "--", "F", temperatureColor(vitals.temperature), Modifier.weight(1f))
+            }
+            vitals.bloodPressure?.let {
+                Text("Blood pressure $it", color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+            vitals.timestamp?.let {
+                Text("Updated $it", color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -339,86 +360,47 @@ private fun VitalSummary(
     }
 }
 
-private fun heartRateColor(value: Int) =
-    if (value in 50..100) HealthColors.Success else HealthColors.Warning
+private fun heartRateColor(value: Int?) =
+    if (value == null || value in 50..100) HealthColors.Success else HealthColors.Warning
 
-private fun hrvColor(value: Int) =
-    if (value >= 45) HealthColors.Success else HealthColors.Warning
+private fun hrvColor(value: Int?) =
+    if (value == null || value >= 45) HealthColors.Success else HealthColors.Warning
 
-private fun oxygenColor(value: Int) =
-    if (value >= 95) HealthColors.Success else HealthColors.Danger
+private fun oxygenColor(value: Int?) =
+    if (value == null || value >= 95) HealthColors.Success else HealthColors.Danger
 
-private fun sleepColor(value: Double) =
-    if (value >= 6.5) HealthColors.Success else HealthColors.Warning
+private fun sleepColor(value: Double?) =
+    if (value == null || value >= 6.5) HealthColors.Success else HealthColors.Warning
 
-@Composable
-private fun HeartRateCard(vitals: Vitals, modifier: Modifier = Modifier) {
-    VitalJournalCard(
-        label = "Heart rate",
-        value = "${vitals.heartRate}",
-        unit = "bpm",
-        iconText = "H",
-        modifier = modifier,
-        bars = true,
-    )
+private fun temperatureColor(value: Double?) =
+    if (value == null || value in 97.0..99.5) HealthColors.Success else HealthColors.Warning
+
+private fun oneDecimal(value: Double): String {
+    val rounded = kotlin.math.round(value * 10.0) / 10.0
+    val text = rounded.toString()
+    return if (text.endsWith(".0")) text.dropLast(2) else text
 }
 
 @Composable
-private fun OxygenCard(vitals: Vitals, modifier: Modifier = Modifier) {
-    VitalJournalCard(
-        label = "SpO2",
-        value = "${vitals.spo2}",
-        unit = "%",
-        iconText = "S",
-        modifier = modifier,
-        chip = "Optimal",
-    )
-}
-
-@Composable
-private fun TemperatureCard(modifier: Modifier = Modifier) {
-    VitalJournalCard(
-        label = "Temperature",
-        value = "98.6",
-        unit = "F",
-        iconText = "T",
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun TrajectoryCard(modifier: Modifier = Modifier) {
+private fun TrajectoryCard(trajectory: org.sova.model.Trajectory, modifier: Modifier = Modifier) {
     JournalCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-            Text("Patient\nTrajectory", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                JournalLabel("Actual", color = HealthColors.Ink)
-                JournalLabel("Predicted", color = HealthColors.Success)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                Text("Patient trajectory", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+                Text("Projected risk over the next 6 hours.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             }
         }
-        RecoveryCurve()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround,
-        ) {
-            listOf("Mon", "Tue", "Wed", "Thu", "Fri").forEach {
-                Text(
-                    it.uppercase(),
-                    color = if (it == "Thu") HealthColors.TextPrimary else HealthColors.MutedBlue,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-        }
+        PatientTrajectoryGraph(trajectory)
     }
 }
 
 @Composable
-private fun LiveInsightsPanel(modifier: Modifier = Modifier) {
+private fun LiveInsightsPanel(patientId: String, vitals: Vitals, modifier: Modifier = Modifier) {
     JournalCard(modifier = modifier) {
         Text("Live Insights", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-        JournalLabel("Patient ID: SOVA-8821 // Real-time neural synthesis")
+        JournalLabel("Patient ID: $patientId // Real-time synthesis")
         SensorLine("Neural latency", "12ms", HealthColors.Accent)
-        SensorLine("Oxygen", "98%", HealthColors.Success)
+        SensorLine("Oxygen", vitals.spo2?.let { "$it%" } ?: "Not reported", oxygenColor(vitals.spo2))
     }
 }
 

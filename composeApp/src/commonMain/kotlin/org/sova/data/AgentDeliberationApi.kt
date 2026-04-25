@@ -2,13 +2,16 @@ package org.sova.data
 
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.sse.SSE
-import io.ktor.client.plugins.sse.sse
+import io.ktor.client.request.header
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.SerialName
@@ -58,11 +61,10 @@ sealed interface AgentDeliberationEvent {
 }
 
 object AgentDeliberationApi {
-    private const val BaseUrl = "http://localhost:8000"
+    private const val BaseUrl = "https://sova-agents.onrender.com"
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val client = sovaHttpClient().config {
         install(ContentNegotiation) { json(json) }
-        install(SSE)
     }
 
     suspend fun start(request: AgentDeliberationStartRequest): AgentDeliberationStartResponse =
@@ -72,20 +74,46 @@ object AgentDeliberationApi {
         }.body()
 
     fun observe(patientId: String): Flow<AgentDeliberationEvent> = flow {
-        client.sse(urlString = "$BaseUrl/stream/$patientId") {
-            incoming.collect { event ->
-                val data = event.data ?: return@collect
-                val payload = json.decodeFromString(StreamPayload.serializer(), data)
-                when (payload.type) {
-                    "agent" -> {
-                        emit(AgentDeliberationEvent.Message(payload.toAgentMessage()))
-                        emit(AgentDeliberationEvent.Convergence(payload.convergence))
+        client.prepareGet("$BaseUrl/stream/$patientId") {
+            header(HttpHeaders.Accept, "text/event-stream")
+            header(HttpHeaders.CacheControl, "no-cache")
+        }.execute { response ->
+            val channel = response.bodyAsChannel()
+            val dataLines = mutableListOf<String>()
+
+            while (!channel.isClosedForRead) {
+                val line = channel.readUTF8Line() ?: break
+                when {
+                    line.startsWith("data:") -> dataLines += line.removePrefix("data:").trim()
+                    line.isBlank() && dataLines.isNotEmpty() -> {
+                        val data = dataLines.joinToString("\n")
+                        dataLines.clear()
+                        emitPayload(data)
                     }
-                    "decision" -> emit(AgentDeliberationEvent.Decision(payload.toDecision()))
-                    "done" -> emit(AgentDeliberationEvent.Done)
-                    "error" -> emit(AgentDeliberationEvent.Error(payload.message ?: "Agent stream failed."))
                 }
             }
+
+            if (dataLines.isNotEmpty()) {
+                emitPayload(dataLines.joinToString("\n"))
+            }
+        }
+    }
+
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<AgentDeliberationEvent>.emitPayload(data: String) {
+        val payload = runCatching {
+            json.decodeFromString(StreamPayload.serializer(), data)
+        }.getOrElse { cause ->
+            emit(AgentDeliberationEvent.Error("Unable to read agent stream event: ${cause.message.orEmpty()}"))
+            return
+        }
+        when (payload.type) {
+            "agent" -> {
+                emit(AgentDeliberationEvent.Message(payload.toAgentMessage()))
+                emit(AgentDeliberationEvent.Convergence(payload.convergence))
+            }
+            "decision" -> emit(AgentDeliberationEvent.Decision(payload.toDecision()))
+            "done" -> emit(AgentDeliberationEvent.Done)
+            "error" -> emit(AgentDeliberationEvent.Error(payload.message ?: "Agent stream failed."))
         }
     }
 }
@@ -99,8 +127,8 @@ fun UserProfile.toAgentDeliberationStartRequest(
         age = ProfileValidation.ageFromDob(dob) ?: 0,
         gender = sex,
         diagnosis = surgery?.takeIf { it.isNotBlank() } ?: "Post-discharge recovery",
-        heartRate = vitals.heartRate.toDouble(),
-        spo2 = vitals.spo2.toDouble(),
+        heartRate = vitals.heartRate?.toDouble() ?: 0.0,
+        spo2 = vitals.spo2?.toDouble() ?: 0.0,
         symptoms = emptyList(),
         medications = medical.medications.map { AgentMedicationPayload(it) },
     )

@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import kotlinx.coroutines.delay
+import org.sova.audio.MicrophoneAccess
+import org.sova.audio.MicrophoneAccessState
 import org.sova.data.AgentDeliberationApi
 import org.sova.data.toAgentDeliberationStartRequest
 import org.sova.components.AgentDeliberationPanel
@@ -59,7 +61,6 @@ fun AgentsScreen(
     user: UserProfile,
     medical: MedicalProfile,
     vitals: Vitals,
-    deliberationMessages: List<AgentDeliberationMessage>,
     onConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -107,7 +108,7 @@ fun AgentsScreen(
                 }
             }
         }.onFailure {
-            deliberationState = AgentDeliberationState.Failed("Agent service is unavailable. Showing a local preview.")
+            deliberationState = AgentDeliberationState.Failed("Agent service is unavailable. Retry when the backend is running.")
         }
     }
 
@@ -124,7 +125,6 @@ fun AgentsScreen(
         if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
             AgentsWide(
                 deliberationState = deliberationState,
-                deliberationMessages = deliberationMessages,
                 onRetry = { retryKey += 1 },
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -132,7 +132,6 @@ fun AgentsScreen(
         } else {
             AgentsCompact(
                 deliberationState = deliberationState,
-                deliberationMessages = deliberationMessages,
                 onRetry = { retryKey += 1 },
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -144,7 +143,6 @@ fun AgentsScreen(
 @Composable
 private fun AgentsCompact(
     deliberationState: AgentDeliberationState,
-    deliberationMessages: List<AgentDeliberationMessage>,
     onRetry: () -> Unit,
     onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -154,14 +152,13 @@ private fun AgentsCompact(
             AiCareHeader()
         }
         item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
-        item { DeliberationSection(deliberationState, deliberationMessages, onRetry) }
+        item { DeliberationSection(deliberationState, onRetry) }
     }
 }
 
 @Composable
 private fun AgentsWide(
     deliberationState: AgentDeliberationState,
-    deliberationMessages: List<AgentDeliberationMessage>,
     onRetry: () -> Unit,
     onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -175,7 +172,6 @@ private fun AgentsWide(
                 }
                 DeliberationSection(
                     state = deliberationState,
-                    fallbackMessages = deliberationMessages,
                     onRetry = onRetry,
                     modifier = Modifier.weight(0.58f),
                 )
@@ -187,7 +183,6 @@ private fun AgentsWide(
 @Composable
 private fun DeliberationSection(
     state: AgentDeliberationState,
-    fallbackMessages: List<AgentDeliberationMessage>,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -213,9 +208,9 @@ private fun DeliberationSection(
             decision = state.decision,
         )
         is AgentDeliberationState.Failed -> AgentDeliberationPanel(
-            messages = fallbackMessages,
+            messages = emptyList(),
             modifier = modifier,
-            statusText = "Preview",
+            statusText = "Unavailable",
             errorText = state.message,
             onRetry = if (state.canRetry) onRetry else null,
         )
@@ -230,7 +225,10 @@ fun SpecialistCallView(
 ) {
     var connected by remember(specialist) { mutableStateOf(false) }
     var muted by remember(specialist) { mutableStateOf(false) }
+    var microphoneAccess by remember(specialist) { mutableStateOf<MicrophoneAccessState?>(null) }
     LaunchedEffect(specialist) {
+        microphoneAccess = MicrophoneAccess.request()
+        muted = microphoneAccess != MicrophoneAccessState.Granted
         delay(3000)
         connected = true
     }
@@ -247,7 +245,12 @@ fun SpecialistCallView(
                             ConnectedCallCard(
                                 specialist = specialist,
                                 muted = muted,
-                                onToggleMute = { muted = !muted },
+                                microphoneAccess = microphoneAccess,
+                                onToggleMute = {
+                                    if (microphoneAccess == MicrophoneAccessState.Granted) {
+                                        muted = !muted
+                                    }
+                                },
                                 modifier = Modifier.weight(0.80f),
                             )
                             LiveCaptionCard(specialist, Modifier.weight(0.20f))
@@ -257,7 +260,12 @@ fun SpecialistCallView(
                             ConnectedCallCard(
                                 specialist = specialist,
                                 muted = muted,
-                                onToggleMute = { muted = !muted },
+                                microphoneAccess = microphoneAccess,
+                                onToggleMute = {
+                                    if (microphoneAccess == MicrophoneAccessState.Granted) {
+                                        muted = !muted
+                                    }
+                                },
                             )
                             LiveCaptionCard(specialist)
                         }
@@ -346,6 +354,7 @@ private fun ConnectingCallCard(specialist: String, modifier: Modifier = Modifier
 private fun ConnectedCallCard(
     specialist: String,
     muted: Boolean,
+    microphoneAccess: MicrophoneAccessState?,
     onToggleMute: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -360,16 +369,37 @@ private fun ConnectedCallCard(
             Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
             JournalLabel("AI care specialist connected", color = HealthColors.Success)
             Text("Secure voice check-in in progress.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-            MuteToggleButton(muted = muted, onClick = onToggleMute)
-            JournalLabel(if (muted) "Microphone muted" else "Microphone on", color = if (muted) HealthColors.Danger else HealthColors.Accent)
+            MuteToggleButton(
+                muted = muted,
+                enabled = microphoneAccess == MicrophoneAccessState.Granted,
+                onClick = onToggleMute,
+            )
+            val microphoneLabel = when (microphoneAccess) {
+                MicrophoneAccessState.Granted -> if (muted) "Microphone muted" else "Microphone on"
+                MicrophoneAccessState.Denied -> "Microphone permission needed"
+                MicrophoneAccessState.Unavailable -> "Microphone unavailable"
+                null -> "Requesting microphone"
+            }
+            JournalLabel(
+                microphoneLabel,
+                color = if (microphoneAccess == MicrophoneAccessState.Granted && !muted) HealthColors.Accent else HealthColors.Danger,
+            )
         }
     }
 }
 
 @Composable
-private fun MuteToggleButton(muted: Boolean, onClick: () -> Unit) {
-    val background = if (muted) HealthColors.Danger else HealthColors.SurfaceSubtle
-    val iconColor = if (muted) HealthColors.Surface else HealthColors.TextPrimary
+private fun MuteToggleButton(muted: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val background = when {
+        !enabled -> HealthColors.SurfaceSubtle
+        muted -> HealthColors.Danger
+        else -> HealthColors.SurfaceSubtle
+    }
+    val iconColor = when {
+        !enabled -> HealthColors.TextSecondary
+        muted -> HealthColors.Surface
+        else -> HealthColors.TextPrimary
+    }
 
     Box(
         modifier = Modifier
@@ -377,7 +407,7 @@ private fun MuteToggleButton(muted: Boolean, onClick: () -> Unit) {
             .clip(HealthShapes.Pill)
             .background(background, HealthShapes.Pill)
             .pointerHoverIcon(PointerIcon.Hand)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.size(HealthSpacing.Lg)) {

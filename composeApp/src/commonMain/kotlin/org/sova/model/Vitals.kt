@@ -1,9 +1,12 @@
 package org.sova.model
 
 data class Vitals(
-    val heartRate: Int,
-    val hrv: Int,
-    val spo2: Int,
-    val sleepHours: Double,
-    val medicationTaken: Boolean,
+    val heartRate: Int? = null,
+    val hrv: Int? = null,
+    val spo2: Int? = null,
+    val sleepHours: Double? = null,
+    val medicationTaken: Boolean? = null,
+    val bloodPressure: String? = null,
+    val temperature: Double? = null,
+    val timestamp: String? = null,
 )

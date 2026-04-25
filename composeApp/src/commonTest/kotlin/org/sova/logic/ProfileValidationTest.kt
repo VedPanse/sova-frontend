@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ProfileValidationTest {
     @Test
@@ -24,6 +25,6 @@ class ProfileValidationTest {
         val age = ProfileValidation.ageFromDob("02/14/1988")
 
         assertNotNull(age)
-        assert(age in 37..38)
+        assertTrue(age in 37..38)
     }
 }

@@ -20,10 +20,10 @@ data class UserProfile(
         get() = listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "Patient" }
 
     val heightLabel: String
-        get() = "$heightFeet ft $heightInches in"
+        get() = if (heightFeet > 0) "$heightFeet ft $heightInches in" else "Not collected"
 
     val weightLabel: String
-        get() = "$weightPounds lb"
+        get() = if (weightPounds > 0) "$weightPounds lb" else "Not collected"
 
     val doctorPhoneLabel: String
         get() = doctorPhoneNumber?.takeIf { it.isNotBlank() } ?: "Not provided"

@@ -34,16 +34,20 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
+import org.sova.data.DisplayContent
 import org.sova.data.PatientProfileApi
 import org.sova.data.PatientProfilePersistence
-import org.sova.data.SampleHealthData
+import org.sova.data.VitalsApi
 import org.sova.data.toPatientProfilePayload
 import org.sova.components.JournalTopBar
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
+import org.sova.logic.SimulationEngine
 import org.sova.model.MedicalProfile
+import org.sova.model.SimulationResult
 import org.sova.model.UserProfile
+import org.sova.model.Vitals
 import org.sova.screens.AgentConversationScreen
 import org.sova.screens.AgentsScreen
 import org.sova.screens.DashboardScreen
@@ -64,6 +68,7 @@ fun AppNavigation() {
     var simulationRun by remember { mutableStateOf(false) }
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var medicalProfile by remember { mutableStateOf<MedicalProfile?>(null) }
+    var vitals by remember { mutableStateOf(Vitals()) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(patientId) {
@@ -89,6 +94,12 @@ fun AppNavigation() {
                 medicalProfile = remote.toMedicalProfile()
                 onboarded = true
             }
+        }
+        val latestVitals = VitalsApi.latest(patientId)
+        if (latestVitals == null) {
+            println("Sova vitals: no database values available for patientId=$patientId.")
+        } else {
+            vitals = latestVitals.toVitals()
         }
         loaded = true
     }
@@ -143,6 +154,7 @@ fun AppNavigation() {
                     RouteContent(
                         userProfile = userProfile,
                         medicalProfile = medicalProfile,
+                        vitals = vitals,
                         route = route,
                         simulationRun = simulationRun,
                         onProfileSave = { user, medical ->
@@ -175,6 +187,7 @@ fun AppNavigation() {
                     RouteContent(
                         userProfile = userProfile,
                         medicalProfile = medicalProfile,
+                        vitals = vitals,
                         route = route,
                         simulationRun = simulationRun,
                         onProfileSave = { user, medical ->
@@ -209,40 +222,46 @@ fun AppNavigation() {
 private fun RouteContent(
     userProfile: UserProfile?,
     medicalProfile: MedicalProfile?,
+    vitals: Vitals,
     route: AppRoute,
     simulationRun: Boolean,
     onProfileSave: (UserProfile, MedicalProfile) -> Unit,
     onRoute: (AppRoute) -> Unit,
     onRunSimulation: () -> Unit,
 ) {
-    val data = SampleHealthData
-    val user = userProfile ?: data.user
-    val medical = medicalProfile ?: data.medical
+    val user = userProfile
+    val medical = medicalProfile ?: MedicalProfile(emptyList(), emptyList(), emptyList())
+    val simulation: SimulationResult = SimulationEngine.run(vitals)
+    if (user == null) {
+        CenteredContent {
+            Text("Patient profile is unavailable.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        }
+        return
+    }
     when (route) {
         AppRoute.Home -> DashboardScreen(
             user = user,
-            vitals = data.vitals,
-            result = data.simulation,
+            vitals = vitals,
+            result = simulation,
             onRunSimulation = onRunSimulation,
             onRecommendedAction = { onRoute(AppRoute.RecommendedAction) },
             onShare = { onRoute(AppRoute.ShareWithCaregiver) },
             modifier = Modifier.fillMaxSize(),
         )
         AppRoute.Agents -> AgentsScreen(
-            agents = data.agents,
+            agents = DisplayContent.agents,
             user = user,
             medical = medical,
-            vitals = data.vitals,
-            deliberationMessages = data.deliberation,
+            vitals = vitals,
             onConversation = { onRoute(AppRoute.Conversation) },
             modifier = Modifier.fillMaxSize(),
         )
-        AppRoute.History -> HistoryScreen(data.history, Modifier.fillMaxSize())
+        AppRoute.History -> HistoryScreen(DisplayContent.history, Modifier.fillMaxSize())
         AppRoute.Profile -> ProfileScreen(user, medical, onSave = onProfileSave, modifier = Modifier.fillMaxSize())
-        AppRoute.Simulation -> SimulationScreen(user, simulationRun, data.simulation, onRunSimulation, Modifier.fillMaxSize())
-        AppRoute.Conversation -> AgentConversationScreen(data.conversation, data.simulation.recommendation, Modifier.fillMaxSize())
-        AppRoute.RecommendedAction -> RecommendedActionScreen(data.simulation.recommendation, Modifier.fillMaxSize())
-        AppRoute.ShareWithCaregiver -> ShareWithCaregiverScreen(user, medical, data.vitals, data.simulation, Modifier.fillMaxSize())
+        AppRoute.Simulation -> SimulationScreen(user, simulationRun, simulation, onRunSimulation, Modifier.fillMaxSize())
+        AppRoute.Conversation -> AgentConversationScreen(DisplayContent.conversation, simulation.recommendation, Modifier.fillMaxSize())
+        AppRoute.RecommendedAction -> RecommendedActionScreen(simulation.recommendation, Modifier.fillMaxSize())
+        AppRoute.ShareWithCaregiver -> ShareWithCaregiverScreen(user, medical, vitals, simulation, Modifier.fillMaxSize())
     }
 }
 
@@ -365,8 +384,8 @@ private fun NavItem(
 ) {
     val background = if (selected) HealthColors.SurfaceSubtle else HealthColors.Surface
     val color = if (selected) HealthColors.Ink else HealthColors.MutedBlue
-    val horizontalPadding = if (compact) HealthSpacing.Xs else HealthSpacing.Sm
-    val verticalPadding = if (compact) HealthSpacing.None else HealthSpacing.Xs
+    val horizontalPadding = if (compact) HealthSpacing.Xs / 2 else HealthSpacing.Sm
+    val verticalPadding = if (compact) HealthSpacing.Xs else HealthSpacing.Xs
     Box(
         modifier = modifier
             .clip(HealthShapes.Pill)

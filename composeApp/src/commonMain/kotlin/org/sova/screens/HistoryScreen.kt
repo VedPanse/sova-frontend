@@ -1,15 +1,17 @@
 package org.sova.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
@@ -19,11 +21,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
 import org.sova.design.HealthColors
@@ -38,11 +46,11 @@ fun HistoryScreen(
 ) {
     var showOlder by remember { mutableStateOf(false) }
     var selectedMeeting by remember { mutableStateOf<HistoryItem?>(null) }
-    val allMeetings = historyWithTranscripts(history)
+    val allMeetings = historyWithSummaries(history)
     val visibleMeetings = if (showOlder) allMeetings else allMeetings.filter(::isTodayOrYesterday)
 
     selectedMeeting?.let { meeting ->
-        TranscriptReader(
+        MeetingSummaryReader(
             meeting = meeting,
             onBack = { selectedMeeting = null },
             modifier = modifier,
@@ -71,26 +79,7 @@ fun HistoryScreen(
                     .pointerHoverIcon(PointerIcon.Hand)
                     .clickable { selectedMeeting = item },
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                    Column(modifier = Modifier.weight(0.34f)) {
-                        JournalLabel(item.time.substringBefore(",").ifBlank { "Today" })
-                        JournalLabel(item.time.substringAfter(", ", item.time))
-                    }
-                    Text(
-                        eventTag(item),
-                        modifier = Modifier
-                            .widthIn(min = HealthSpacing.CouncilAvatar)
-                            .background(HealthColors.SurfaceSubtle, HealthShapes.SmallCard)
-                            .padding(HealthSpacing.Xs),
-                        color = HealthColors.TextSecondary,
-                        style = MaterialTheme.typography.labelMedium,
-                        textAlign = TextAlign.Center,
-                    )
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                        Text(item.title, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
-                        Text(item.summary, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
+                MeetingCardContent(item)
             }
         }
         if (!showOlder && allMeetings.any { !isTodayOrYesterday(it) }) item {
@@ -107,96 +96,144 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun TranscriptReader(
+private fun MeetingCardContent(item: HistoryItem) {
+    BoxWithConstraints {
+        if (maxWidth < 420.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        NoWrapLabel(item.time.substringBefore(",").ifBlank { "Today" })
+                        NoWrapLabel(item.time.substringAfter(", ", item.time))
+                    }
+                    MeetingTag(item, modifier = Modifier.width(96.dp))
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                    Text(item.title, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
+                    Text(item.summary, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                Column(modifier = Modifier.width(104.dp)) {
+                    NoWrapLabel(item.time.substringBefore(",").ifBlank { "Today" })
+                    NoWrapLabel(item.time.substringAfter(", ", item.time))
+                }
+                MeetingTag(item, modifier = Modifier.width(92.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                    Text(item.title, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
+                    Text(item.summary, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetingTag(item: HistoryItem, modifier: Modifier = Modifier) {
+    Text(
+        eventTag(item),
+        modifier = modifier
+            .background(HealthColors.SurfaceSubtle, HealthShapes.SmallCard)
+            .padding(HealthSpacing.Xs),
+        color = HealthColors.TextSecondary,
+        style = MaterialTheme.typography.labelMedium,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+    )
+}
+
+@Composable
+private fun NoWrapLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text.uppercase(),
+        modifier = modifier,
+        color = HealthColors.MutedBlue,
+        style = MaterialTheme.typography.labelMedium,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+    )
+}
+
+@Composable
+private fun MeetingSummaryReader(
     meeting: HistoryItem,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
-            Text(
-                "Back to Recent Meetings",
-                modifier = Modifier
-                    .pointerHoverIcon(PointerIcon.Hand)
-                    .clickable(onClick = onBack),
-                color = HealthColors.TextSecondary,
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            SummaryBackButton(onClick = onBack)
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                JournalLabel("Meeting transcript")
+                JournalLabel("Meeting summary")
                 Text(meeting.title, color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
                 Text(meeting.time, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             }
         }
-        items(transcriptFor(meeting)) { message ->
-            TranscriptBubble(message)
-        }
-    }
-}
-
-@Composable
-private fun TranscriptBubble(message: TranscriptMessage) {
-    val isPatient = message.speaker == "Patient"
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isPatient) Arrangement.End else Arrangement.Start,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.78f)
-                .background(
-                    color = if (isPatient) HealthColors.AccentSoft else HealthColors.Surface,
-                    shape = HealthShapes.Card,
-                )
-                .padding(HealthSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                if (!isPatient) SpeakerDot(message.speaker)
-                JournalLabel(message.speaker, color = if (isPatient) HealthColors.Accent else HealthColors.MutedBlue)
-                if (isPatient) SpeakerDot(message.speaker)
+        item {
+            JournalCard {
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    JournalLabel("Summary")
+                    Text(meeting.summary, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
+                }
             }
-            Text(
-                message.text,
-                color = HealthColors.TextPrimary,
-                style = MaterialTheme.typography.bodyLarge,
-            )
+        }
+        item {
+            JournalCard {
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    JournalLabel("Key points")
+                    summaryPointsFor(meeting).forEach {
+                        Text(it, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun SpeakerDot(speaker: String) {
+private fun SummaryBackButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(HealthSpacing.Lg)
-            .background(if (speaker == "Patient") HealthColors.Accent else HealthColors.Success, HealthShapes.Pill)
-            .padding(HealthSpacing.Xs),
+            .size(HealthSpacing.Xl)
+            .clip(HealthShapes.Pill)
+            .background(HealthColors.Surface, HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(speaker.take(1), color = HealthColors.Surface, style = MaterialTheme.typography.labelMedium)
+        Canvas(Modifier.size(HealthSpacing.Icon)) {
+            val stroke = Stroke(width = HealthSpacing.Stroke.toPx() * 2.2f, cap = StrokeCap.Round)
+            drawLine(HealthColors.TextPrimary, Offset(size.width * 0.68f, size.height * 0.20f), Offset(size.width * 0.32f, size.height * 0.50f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            drawLine(HealthColors.TextPrimary, Offset(size.width * 0.32f, size.height * 0.50f), Offset(size.width * 0.68f, size.height * 0.80f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+        }
     }
 }
 
-private fun historyWithTranscripts(history: List<HistoryItem>): List<HistoryItem> =
+private fun historyWithSummaries(history: List<HistoryItem>): List<HistoryItem> =
     history + listOf(
         HistoryItem(
-            title = "AI Care Transcript",
+            title = "AI Care Summary",
             summary = "Patient reported feeling steady after medication. AI care team advised hydration and passive monitoring.",
             time = "Yesterday, 6:18 PM",
         ),
         HistoryItem(
-            title = "Caregiver Summary Transcript",
+            title = "Caregiver Summary",
             summary = "Sova generated a concise caregiver-ready summary covering vitals, medication adherence, and low short-term risk.",
             time = "Sep 22, 9:20 AM",
         ),
     )
 
 private fun eventTag(item: HistoryItem): String =
-    if (item.title.contains("Transcript", ignoreCase = true)) {
-        "TRANSCRIPT"
+    if (item.title.contains("Summary", ignoreCase = true)) {
+        "SUMMARY"
     } else {
         "AI REPORT"
     }
@@ -204,28 +241,21 @@ private fun eventTag(item: HistoryItem): String =
 private fun isTodayOrYesterday(item: HistoryItem): Boolean =
     item.time.startsWith("Today") || item.time.startsWith("Yesterday")
 
-private data class TranscriptMessage(
-    val speaker: String,
-    val text: String,
-)
-
-private fun transcriptFor(item: HistoryItem): List<TranscriptMessage> =
+private fun summaryPointsFor(item: HistoryItem): List<String> =
     when {
         item.title.contains("Caregiver", ignoreCase = true) -> listOf(
-            TranscriptMessage("Caregiver", "I reviewed your vitals and the Sova summary. Heart rate, oxygen, and medication adherence look stable."),
-            TranscriptMessage("Patient", "I felt a little tired this morning, but breathing has been comfortable."),
-            TranscriptMessage("Caregiver", "That matches the trend. Continue hydration, normal meals, and light movement as tolerated."),
-            TranscriptMessage("Caregiver", "Escalate if oxygen drops, chest discomfort appears, or fatigue becomes sudden or severe."),
+            "Vitals and medication adherence were summarized for the caregiver.",
+            "Short-term risk remained low at the time of review.",
+            "Caregiver escalation remains available if symptoms change.",
         )
-        item.title.contains("Transcript", ignoreCase = true) -> listOf(
-            TranscriptMessage("Sova AI", "I’m checking your recovery signals now. Heart rate is steady and oxygen is holding at 98%."),
-            TranscriptMessage("Patient", "I feel okay. I took my medication and slept better than yesterday."),
-            TranscriptMessage("Sova AI", "Good. HRV and sleep support continued passive monitoring. No urgent care action is recommended."),
-            TranscriptMessage("Sova AI", "Recommended next step: hydrate, continue normal medication timing, and check back if symptoms change."),
+        item.title.contains("AI Care", ignoreCase = true) -> listOf(
+            "Patient felt steady after medication.",
+            "Hydration and passive monitoring were recommended.",
+            "No urgent escalation was recommended.",
         )
         else -> listOf(
-            TranscriptMessage("Sova AI", item.summary),
-            TranscriptMessage("Patient", "No new severe symptoms reported during this check-in."),
-            TranscriptMessage("Sova AI", "The meeting closed with continued monitoring and no escalation required."),
+            item.summary,
+            "Only the meeting summary is shown.",
+            "Review the summary and continue with the recommended action.",
         )
     }

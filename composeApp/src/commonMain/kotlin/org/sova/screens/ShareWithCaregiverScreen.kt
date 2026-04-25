@@ -61,10 +61,13 @@ fun ShareWithCaregiverScreen(
             HealthCard {
                 Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     SectionHeader("Current state", result.summary)
-                    InfoRow("Heart rate", "${vitals.heartRate} bpm")
-                    InfoRow("HRV", "${vitals.hrv} ms")
-                    InfoRow("SpO2", "${vitals.spo2}%")
-                    InfoRow("Sleep", "${vitals.sleepHours} hours")
+                    InfoRow("Heart rate", vitals.heartRate?.let { "$it bpm" } ?: "Not available")
+                    vitals.bloodPressure?.let { InfoRow("Blood pressure", it) }
+                    vitals.temperature?.let { InfoRow("Temperature", "${oneDecimal(it)} F") }
+                    InfoRow("HRV", vitals.hrv?.let { "$it ms" } ?: "Not available")
+                    InfoRow("SpO2", vitals.spo2?.let { "$it%" } ?: "Not available")
+                    InfoRow("Sleep", vitals.sleepHours?.let { "$it hours" } ?: "Not available")
+                    vitals.timestamp?.let { InfoRow("Updated", it) }
                     InfoRow("Risk", result.riskLevel.name)
                     InfoRow("Trajectory", result.trajectory.points.joinToString { "${it.label}: ${it.riskLevel.name}" })
                     InfoRow("Recommendation", result.recommendation)
@@ -86,3 +89,9 @@ fun ShareWithCaregiverScreen(
 
 private fun readableList(values: List<String>): String =
     values.ifEmpty { listOf("None reported") }.joinToString()
+
+private fun oneDecimal(value: Double): String {
+    val rounded = kotlin.math.round(value * 10.0) / 10.0
+    val text = rounded.toString()
+    return if (text.endsWith(".0")) text.dropLast(2) else text
+}

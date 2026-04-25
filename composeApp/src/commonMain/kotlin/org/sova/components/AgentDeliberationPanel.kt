@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -137,10 +138,19 @@ private fun DeliberationBubble(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Top,
                     ) {
-                        Text(message.agentName, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
-                        Text(message.specialty, color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2)) {
+                            Text(message.agentName, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                message.specialty,
+                                color = HealthColors.TextSecondary,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     Text(message.message, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
                 }

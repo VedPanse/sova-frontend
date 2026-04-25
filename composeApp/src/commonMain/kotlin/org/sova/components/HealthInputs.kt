@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TransformedText
@@ -156,45 +157,70 @@ fun HealthSegmentedSelector(
         verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
     ) {
         Text(label, color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(HealthColors.SurfaceSubtle, HealthShapes.Pill)
-                .padding(HealthSpacing.Xs),
-            horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(HealthSpacing.None),
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2),
         ) {
-            options.forEach { option ->
-                val isSelected = option == selected
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = HealthSpacing.Xl + HealthSpacing.Sm)
-                        .clip(HealthShapes.Pill)
-                        .pointerHoverIcon(PointerIcon.Hand)
-                        .clickable { onSelected(option) },
-                    shape = HealthShapes.Pill,
-                    color = if (isSelected) HealthColors.Surface else HealthColors.SurfaceSubtle,
-                    border = if (isSelected) BorderStroke(HealthSpacing.Stroke, HealthColors.Border) else null,
-                    shadowElevation = HealthSpacing.None,
+            val rows = if (options.size > 3) options.chunked(2) else listOf(options)
+            rows.forEach { rowOptions ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = HealthSpacing.Xl + HealthSpacing.Sm)
-                            .padding(horizontal = HealthSpacing.Xs),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = option,
-                            color = if (isSelected) HealthColors.TextPrimary else HealthColors.TextSecondary,
-                            style = MaterialTheme.typography.labelMedium,
+                    rowOptions.forEach { option ->
+                        SegmentOption(
+                            option = option,
+                            isSelected = option == selected,
+                            onSelected = { onSelected(option) },
+                            modifier = Modifier.weight(1f),
                         )
+                    }
+                    if (rowOptions.size == 1) {
+                        Box(modifier = Modifier.weight(1f))
                     }
                 }
             }
         }
         FieldNote(helperText = helperText, errorText = errorText)
+    }
+}
+
+@Composable
+private fun SegmentOption(
+    option: String,
+    isSelected: Boolean,
+    onSelected: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .heightIn(min = HealthSpacing.Xl)
+            .clip(HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable { onSelected() },
+        shape = HealthShapes.Pill,
+        color = if (isSelected) HealthColors.Surface else HealthColors.SurfaceSubtle,
+        border = if (isSelected) BorderStroke(HealthSpacing.Stroke, HealthColors.Border) else null,
+        shadowElevation = HealthSpacing.None,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = HealthSpacing.Xl)
+                .padding(horizontal = HealthSpacing.Xs),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = option,
+                color = if (isSelected) HealthColors.TextPrimary else HealthColors.TextSecondary,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+            )
+        }
     }
 }
 
