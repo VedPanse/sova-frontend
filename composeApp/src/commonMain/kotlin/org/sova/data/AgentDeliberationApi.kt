@@ -67,11 +67,16 @@ object AgentDeliberationApi {
         install(ContentNegotiation) { json(json) }
     }
 
-    suspend fun start(request: AgentDeliberationStartRequest): AgentDeliberationStartResponse =
-        client.post("$BaseUrl/start-debate/${request.patientId}") {
+    suspend fun start(request: AgentDeliberationStartRequest): AgentDeliberationStartResponse {
+        val response = client.post("$BaseUrl/start-debate/${request.patientId}") {
             contentType(ContentType.Application.Json)
             setBody(request)
-        }.body()
+        }.body<AgentDeliberationStartResponse>()
+        require(response.patientId == request.patientId) {
+            "Agent service returned patient ${response.patientId}, expected ${request.patientId}."
+        }
+        return response
+    }
 
     fun observe(patientId: String): Flow<AgentDeliberationEvent> = flow {
         client.prepareGet("$BaseUrl/stream/$patientId") {
@@ -88,22 +93,29 @@ object AgentDeliberationApi {
                     line.isBlank() && dataLines.isNotEmpty() -> {
                         val data = dataLines.joinToString("\n")
                         dataLines.clear()
-                        emitPayload(data)
+                        emitPayload(data, patientId)
                     }
                 }
             }
 
             if (dataLines.isNotEmpty()) {
-                emitPayload(dataLines.joinToString("\n"))
+                emitPayload(dataLines.joinToString("\n"), patientId)
             }
         }
     }
 
-    private suspend fun kotlinx.coroutines.flow.FlowCollector<AgentDeliberationEvent>.emitPayload(data: String) {
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<AgentDeliberationEvent>.emitPayload(
+        data: String,
+        expectedPatientId: String,
+    ) {
         val payload = runCatching {
             json.decodeFromString(StreamPayload.serializer(), data)
         }.getOrElse { cause ->
             emit(AgentDeliberationEvent.Error("Unable to read agent stream event: ${cause.message.orEmpty()}"))
+            return
+        }
+        if (payload.patientId != null && payload.patientId != expectedPatientId) {
+            emit(AgentDeliberationEvent.Error("Agent stream patient mismatch. Expected $expectedPatientId but received ${payload.patientId}."))
             return
         }
         when (payload.type) {
