@@ -13,18 +13,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.delay
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
+import org.sova.model.AgentDeliberationDecision
 import org.sova.model.AgentDeliberationMessage
 import org.sova.model.DeliberationStance
 
@@ -32,17 +27,13 @@ import org.sova.model.DeliberationStance
 fun AgentDeliberationPanel(
     messages: List<AgentDeliberationMessage>,
     modifier: Modifier = Modifier,
+    statusText: String = "Live",
+    activeAgent: String? = null,
+    convergence: Double = 0.0,
+    decision: AgentDeliberationDecision? = null,
+    errorText: String? = null,
+    onRetry: (() -> Unit)? = null,
 ) {
-    var visibleCount by remember(messages) { mutableIntStateOf(1.coerceAtMost(messages.size)) }
-
-    LaunchedEffect(messages) {
-        visibleCount = 1.coerceAtMost(messages.size)
-        while (visibleCount < messages.size) {
-            delay(1200)
-            visibleCount += 1
-        }
-    }
-
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = HealthColors.Surface,
@@ -69,7 +60,7 @@ fun AgentDeliberationPanel(
                     border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
                 ) {
                     Text(
-                        text = "SSE ready",
+                        text = statusText,
                         modifier = Modifier.padding(horizontal = HealthSpacing.Sm, vertical = HealthSpacing.Xs),
                         color = HealthColors.Accent,
                         style = MaterialTheme.typography.labelMedium,
@@ -77,16 +68,39 @@ fun AgentDeliberationPanel(
                 }
             }
 
-            messages.take(visibleCount).forEachIndexed { index, message ->
-                DeliberationBubble(
-                    message = message,
-                    alignEnd = message.stance == DeliberationStance.Decision,
-                    showConnector = index < visibleCount - 1,
+            if (convergence > 0.0) {
+                Text(
+                    text = "Consensus ${(convergence * 100).toInt().coerceIn(0, 100)}%",
+                    color = HealthColors.TextSecondary,
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
 
-            if (visibleCount < messages.size) {
-                TypingIndicator(messages[visibleCount])
+            errorText?.let {
+                Text(it, color = HealthColors.Danger, style = MaterialTheme.typography.bodyLarge)
+                if (onRetry != null) {
+                    SecondaryButton("Retry", onClick = onRetry)
+                }
+            }
+
+            if (messages.isEmpty() && errorText == null) {
+                Text("Waiting for the first specialist response...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            }
+
+            messages.forEachIndexed { index, message ->
+                DeliberationBubble(
+                    message = message,
+                    alignEnd = message.stance == DeliberationStance.Decision,
+                    showConnector = index < messages.lastIndex,
+                )
+            }
+
+            activeAgent?.let {
+                TypingIndicator(it)
+            }
+
+            decision?.let {
+                DecisionSummary(it)
             }
         }
     }
@@ -147,17 +161,38 @@ private fun DeliberationBubble(
 }
 
 @Composable
-private fun TypingIndicator(nextMessage: AgentDeliberationMessage) {
+private fun TypingIndicator(agentName: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
     ) {
-        AgentAvatar(nextMessage.initials, stanceColor(nextMessage.stance))
+        AgentAvatar("AI", HealthColors.AccentSoft)
         Text(
-            text = "${nextMessage.agentName} is reviewing...",
+            text = "$agentName is reviewing...",
             color = HealthColors.TextSecondary,
             style = MaterialTheme.typography.bodyLarge,
         )
+    }
+}
+
+@Composable
+private fun DecisionSummary(decision: AgentDeliberationDecision) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = HealthColors.AccentSoft,
+        shape = HealthShapes.SmallCard,
+        border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
+    ) {
+        Column(
+            modifier = Modifier.padding(HealthSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
+        ) {
+            JournalLabel("Final recommendation")
+            Text(decision.recommendation, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
+            if (decision.actions.isNotEmpty()) {
+                Text(decision.actions.joinToString(" • "), color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+            }
+        }
     }
 }
 

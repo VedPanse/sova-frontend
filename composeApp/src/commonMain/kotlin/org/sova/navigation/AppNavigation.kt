@@ -230,6 +230,9 @@ private fun RouteContent(
         )
         AppRoute.Agents -> AgentsScreen(
             agents = data.agents,
+            user = user,
+            medical = medical,
+            vitals = data.vitals,
             deliberationMessages = data.deliberation,
             onConversation = { onRoute(AppRoute.Conversation) },
             modifier = Modifier.fillMaxSize(),

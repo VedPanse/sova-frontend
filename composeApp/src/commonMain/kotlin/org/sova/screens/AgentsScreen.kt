@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import kotlinx.coroutines.delay
+import org.sova.data.AgentDeliberationApi
+import org.sova.data.toAgentDeliberationStartRequest
 import org.sova.components.AgentDeliberationPanel
 import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
@@ -44,16 +46,70 @@ import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.model.Agent
+import org.sova.model.AgentDeliberationDecision
 import org.sova.model.AgentDeliberationMessage
+import org.sova.model.AgentDeliberationState
+import org.sova.model.MedicalProfile
+import org.sova.model.UserProfile
+import org.sova.model.Vitals
 
 @Composable
 fun AgentsScreen(
     agents: List<Agent>,
+    user: UserProfile,
+    medical: MedicalProfile,
+    vitals: Vitals,
     deliberationMessages: List<AgentDeliberationMessage>,
     onConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var activeSpecialist by remember { mutableStateOf<String?>(null) }
+    var deliberationState by remember { mutableStateOf<AgentDeliberationState>(AgentDeliberationState.Idle) }
+    var retryKey by remember { mutableStateOf(0) }
+
+    LaunchedEffect(user.patientId, retryKey) {
+        deliberationState = AgentDeliberationState.Starting
+        val messages = mutableListOf<AgentDeliberationMessage>()
+        var convergence = 0.0
+        var decision: AgentDeliberationDecision? = null
+
+        runCatching {
+            val request = user.toAgentDeliberationStartRequest(medical, vitals)
+            val session = AgentDeliberationApi.start(request)
+            deliberationState = AgentDeliberationState.Streaming(messages = emptyList())
+            AgentDeliberationApi.observe(session.patientId).collect { event ->
+                when (event) {
+                    is org.sova.data.AgentDeliberationEvent.Started -> {
+                        deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
+                    }
+                    is org.sova.data.AgentDeliberationEvent.Message -> {
+                        messages += event.value
+                        deliberationState = AgentDeliberationState.Streaming(
+                            messages = messages.toList(),
+                            convergence = convergence,
+                            activeAgent = event.value.agentName,
+                        )
+                    }
+                    is org.sova.data.AgentDeliberationEvent.Convergence -> {
+                        convergence = event.value
+                        deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
+                    }
+                    is org.sova.data.AgentDeliberationEvent.Decision -> {
+                        decision = event.value
+                        deliberationState = AgentDeliberationState.Completed(messages = messages.toList(), decision = decision)
+                    }
+                    is org.sova.data.AgentDeliberationEvent.Done -> {
+                        deliberationState = AgentDeliberationState.Completed(messages = messages.toList(), decision = decision)
+                    }
+                    is org.sova.data.AgentDeliberationEvent.Error -> {
+                        deliberationState = AgentDeliberationState.Failed(event.message)
+                    }
+                }
+            }
+        }.onFailure {
+            deliberationState = AgentDeliberationState.Failed("Agent service is unavailable. Showing a local preview.")
+        }
+    }
 
     activeSpecialist?.let { specialist ->
         SpecialistCallView(
@@ -67,13 +123,17 @@ fun AgentsScreen(
     BoxWithConstraints(modifier = modifier) {
         if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
             AgentsWide(
+                deliberationState = deliberationState,
                 deliberationMessages = deliberationMessages,
+                onRetry = { retryKey += 1 },
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
             AgentsCompact(
+                deliberationState = deliberationState,
                 deliberationMessages = deliberationMessages,
+                onRetry = { retryKey += 1 },
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -83,7 +143,9 @@ fun AgentsScreen(
 
 @Composable
 private fun AgentsCompact(
+    deliberationState: AgentDeliberationState,
     deliberationMessages: List<AgentDeliberationMessage>,
+    onRetry: () -> Unit,
     onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -92,13 +154,15 @@ private fun AgentsCompact(
             AiCareHeader()
         }
         item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
-        item { AgentDeliberationPanel(messages = deliberationMessages) }
+        item { DeliberationSection(deliberationState, deliberationMessages, onRetry) }
     }
 }
 
 @Composable
 private fun AgentsWide(
+    deliberationState: AgentDeliberationState,
     deliberationMessages: List<AgentDeliberationMessage>,
+    onRetry: () -> Unit,
     onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -108,17 +172,53 @@ private fun AgentsWide(
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(0.42f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                     CareCouncilPanel(onSpecialistSelected = onSpecialistSelected)
-                    JournalCard {
-                        JournalLabel("Care model")
-                        Text("Agents are reading live vitals, medication adherence, and recovery markers before proposing a single action.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-                    }
                 }
-                AgentDeliberationPanel(
-                    messages = deliberationMessages,
+                DeliberationSection(
+                    state = deliberationState,
+                    fallbackMessages = deliberationMessages,
+                    onRetry = onRetry,
                     modifier = Modifier.weight(0.58f),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DeliberationSection(
+    state: AgentDeliberationState,
+    fallbackMessages: List<AgentDeliberationMessage>,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (state) {
+        AgentDeliberationState.Idle,
+        AgentDeliberationState.Starting -> AgentDeliberationPanel(
+            messages = emptyList(),
+            modifier = modifier,
+            statusText = "Starting",
+            activeAgent = "Sova council",
+        )
+        is AgentDeliberationState.Streaming -> AgentDeliberationPanel(
+            messages = state.messages,
+            modifier = modifier,
+            statusText = "Live",
+            activeAgent = state.activeAgent,
+            convergence = state.convergence,
+        )
+        is AgentDeliberationState.Completed -> AgentDeliberationPanel(
+            messages = state.messages,
+            modifier = modifier,
+            statusText = "Complete",
+            decision = state.decision,
+        )
+        is AgentDeliberationState.Failed -> AgentDeliberationPanel(
+            messages = fallbackMessages,
+            modifier = modifier,
+            statusText = "Preview",
+            errorText = state.message,
+            onRetry = if (state.canRetry) onRetry else null,
+        )
     }
 }
 
