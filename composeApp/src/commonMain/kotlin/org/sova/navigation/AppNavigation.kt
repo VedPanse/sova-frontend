@@ -201,7 +201,7 @@ fun AppNavigation() {
                 CenteredChrome {
                     JournalTopBar()
                 }
-                CenteredContent(modifier = Modifier.weight(1f)) {
+                CenteredContent(modifier = Modifier.weight(1f), wide = true) {
                     OnboardingScreen(
                         patientId = patientId,
                         onComplete = { user, medical ->
@@ -220,7 +220,7 @@ fun AppNavigation() {
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
