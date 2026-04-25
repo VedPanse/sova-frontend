@@ -17,6 +17,7 @@ object HealthSpacing {
     val CouncilCardHeight = 200.dp
     val SmallBar = 3.dp
     val VitalBar = 28.dp
+    val StabilityRailWidth = 160.dp
     val JournalImageHeight = 110.dp
     val ChartHeight = 210.dp
     val SidebarWidth = 240.dp

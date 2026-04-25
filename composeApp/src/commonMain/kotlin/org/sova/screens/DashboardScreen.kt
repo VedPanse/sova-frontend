@@ -2,7 +2,6 @@ package org.sova.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
@@ -11,19 +10,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
 import org.sova.components.RecoveryCurve
@@ -66,13 +59,9 @@ private fun DashboardCompact(
         item {
             StatusHeader(user)
         }
-        item {
-            HeartRateCard(vitals)
-        }
-        item { OxygenCard(vitals) }
-        item { TemperatureCard() }
+        item { CurrentVitalsCard(vitals) }
+        item { LiveInsightsPanel() }
         item { TrajectoryCard() }
-        item { CareCouncilPanel() }
     }
 }
 
@@ -88,11 +77,8 @@ private fun DashboardWide(
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(0.95f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                     StatusHeader(user)
-                    Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                        HeartRateCard(vitals, Modifier.weight(1f))
-                        OxygenCard(vitals, Modifier.weight(1f))
-                    }
-                    TemperatureCard()
+                    CurrentVitalsCard(vitals)
+                    LiveInsightsPanel()
                 }
                 Column(modifier = Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                     TrajectoryCard()
@@ -101,9 +87,6 @@ private fun DashboardWide(
                         Text(result.recommendation, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
                         Text("Continue passive monitoring. Escalate only if symptoms change or oxygen trends downward.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
                     }
-                }
-                Column(modifier = Modifier.weight(0.95f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                    CareCouncilPanel()
                 }
             }
         }
@@ -119,9 +102,87 @@ private fun StatusHeader(user: UserProfile) {
             color = HealthColors.TextPrimary,
             style = MaterialTheme.typography.titleLarge,
         )
-        StabilityIndex(score = 94, modifier = Modifier.padding(vertical = HealthSpacing.Sm))
+        StabilityIndex(score = 94, modifier = Modifier.padding(vertical = HealthSpacing.Xs))
     }
 }
+
+@Composable
+private fun CurrentVitalsCard(vitals: Vitals, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = HealthColors.Surface,
+        shape = HealthShapes.Card,
+        border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
+        shadowElevation = HealthSpacing.None,
+    ) {
+        Column(
+            modifier = Modifier.padding(HealthSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
+            ) {
+                JournalLabel("Current vitals", modifier = Modifier.weight(1f))
+                Text(
+                    if (vitals.medicationTaken) "Medication ok" else "Medication missed",
+                    color = if (vitals.medicationTaken) HealthColors.Success else HealthColors.Warning,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                VitalSummary("Heart", "${vitals.heartRate}", "bpm", heartRateColor(vitals.heartRate), Modifier.weight(1f))
+                VitalSummary("HRV", "${vitals.hrv}", "ms", hrvColor(vitals.hrv), Modifier.weight(1f))
+                VitalSummary("Oxygen", "${vitals.spo2}", "%", oxygenColor(vitals.spo2), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                VitalSummary("Sleep", "${vitals.sleepHours}", "hr", sleepColor(vitals.sleepHours), Modifier.weight(1f))
+                VitalSummary("Temp", "98.6", "F", HealthColors.Success, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun VitalSummary(
+    label: String,
+    value: String,
+    unit: String,
+    statusColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(HealthColors.SurfaceSubtle, HealthShapes.SmallCard)
+            .padding(HealthSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(HealthSpacing.SmallBar)
+                .background(statusColor, HealthShapes.Pill),
+        )
+        JournalLabel(label)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+            Text(value, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+            Text(unit, color = HealthColors.MutedBlue, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+private fun heartRateColor(value: Int) =
+    if (value in 50..100) HealthColors.Success else HealthColors.Warning
+
+private fun hrvColor(value: Int) =
+    if (value >= 45) HealthColors.Success else HealthColors.Warning
+
+private fun oxygenColor(value: Int) =
+    if (value >= 95) HealthColors.Success else HealthColors.Danger
+
+private fun sleepColor(value: Double) =
+    if (value >= 6.5) HealthColors.Success else HealthColors.Warning
 
 @Composable
 private fun HeartRateCard(vitals: Vitals, modifier: Modifier = Modifier) {
@@ -185,115 +246,32 @@ private fun TrajectoryCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun CareCouncilPanel() {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = HealthColors.Surface,
-        shape = HealthShapes.Card,
-        border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(HealthColors.AccentSoft)
-                    .padding(HealthSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(HealthSpacing.Xl)
-                        .background(HealthColors.Accent, HealthShapes.Pill),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("5", color = HealthColors.Surface, style = MaterialTheme.typography.titleLarge)
-                }
-                Text(
-                    text = "Care Intelligence Team",
-                    modifier = Modifier.weight(1f),
-                    color = HealthColors.Ink,
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    text = "AI specialist council",
-                    color = HealthColors.Accent,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(HealthSpacing.Sm),
-                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
-            ) {
-                items(councilAgents) { agent ->
-                    CouncilAgentCard(agent)
-                }
-            }
-        }
+private fun LiveInsightsPanel() {
+    JournalCard {
+        Text("Live Insights", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+        JournalLabel("Patient ID: SOVA-8821 // Real-time neural synthesis")
+        SensorLine("Neural latency", "12ms", HealthColors.Accent)
+        SensorLine("Oxygen", "98%", HealthColors.Success)
     }
 }
 
 @Composable
-private fun CouncilAgentCard(agent: CouncilAgent) {
+private fun SensorLine(label: String, value: String, color: androidx.compose.ui.graphics.Color) {
     Column(
         modifier = Modifier
-            .width(HealthSpacing.CouncilCardWidth)
-            .height(HealthSpacing.CouncilCardHeight)
-            .background(HealthColors.SurfaceSubtle, HealthShapes.Card)
-            .border(HealthSpacing.Stroke, HealthColors.Border, HealthShapes.Card)
-            .padding(HealthSpacing.Sm),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
+            .fillMaxWidth()
+            .background(HealthColors.SurfaceSubtle)
+            .padding(HealthSpacing.Xs),
     ) {
+        Row {
+            JournalLabel(label, modifier = Modifier.weight(1f), color = color)
+            Text(value, color = HealthColors.Ink, style = MaterialTheme.typography.labelMedium)
+        }
         Box(
             modifier = Modifier
-                .size(HealthSpacing.CouncilAvatar)
-                .background(agent.avatarColor, HealthShapes.Pill),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(agent.initials, color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
-        }
-        Text(
-            text = agent.name,
-            color = HealthColors.TextPrimary,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = agent.role,
-            modifier = Modifier.weight(1f),
-            color = HealthColors.TextSecondary,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = "Start check-in",
-            color = HealthColors.Success,
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+                .fillMaxWidth()
+                .height(HealthSpacing.SmallBar)
+                .background(color, HealthShapes.Pill),
         )
     }
 }
-
-private data class CouncilAgent(
-    val initials: String,
-    val name: String,
-    val role: String,
-    val avatarColor: androidx.compose.ui.graphics.Color,
-)
-
-private val councilAgents = listOf(
-    CouncilAgent("GP", "Dr. General", "Primary care - synthesizes the whole picture", HealthColors.SurfaceSubtle),
-    CouncilAgent("CD", "Dr. Cardio", "Heart rhythm and cardiac risk", HealthColors.AccentSoft),
-    CouncilAgent("PH", "Dr. Pharma", "Medication timing and interactions", HealthColors.Success.copy(alpha = 0.35f)),
-    CouncilAgent("BH", "Behavioral Health", "Sleep, stress, and daily barriers", HealthColors.MutedBlue.copy(alpha = 0.30f)),
-    CouncilAgent("PA", "Patient Advocate", "Preference, comfort, and quality of life", HealthColors.Warning.copy(alpha = 0.35f)),
-)

@@ -22,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.KeyboardType
@@ -169,6 +171,7 @@ fun HealthSegmentedSelector(
                         .weight(1f)
                         .heightIn(min = HealthSpacing.Xl + HealthSpacing.Sm)
                         .clip(HealthShapes.Pill)
+                        .pointerHoverIcon(PointerIcon.Hand)
                         .clickable { onSelected(option) },
                     shape = HealthShapes.Pill,
                     color = if (isSelected) HealthColors.Surface else HealthColors.SurfaceSubtle,

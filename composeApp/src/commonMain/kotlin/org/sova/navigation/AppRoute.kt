@@ -2,7 +2,7 @@ package org.sova.navigation
 
 enum class AppRoute(val label: String) {
     Home("Dashboard"),
-    Agents("Insights"),
+    Agents("AI Care"),
     History("History"),
     Profile("Profile"),
     Simulation("Simulation"),

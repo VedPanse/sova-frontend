@@ -1,32 +1,47 @@
 package org.sova.screens
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
-import org.sova.components.PrimaryButton
-import org.sova.components.SmallCapsPill
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.model.Agent
+import kotlinx.coroutines.delay
 
 @Composable
 fun AgentsScreen(
@@ -34,112 +49,102 @@ fun AgentsScreen(
     onConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var activeSpecialist by remember { mutableStateOf<String?>(null) }
+
+    activeSpecialist?.let { specialist ->
+        SpecialistCallView(
+            specialist = specialist,
+            onBack = { activeSpecialist = null },
+            modifier = modifier,
+        )
+        return
+    }
+
     BoxWithConstraints(modifier = modifier) {
         if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
-            AgentsWide(onConversation = onConversation, modifier = Modifier.fillMaxWidth())
+            AgentsWide(onSpecialistSelected = { activeSpecialist = it }, modifier = Modifier.fillMaxWidth())
         } else {
-            AgentsCompact(onConversation = onConversation, modifier = Modifier.fillMaxWidth())
+            AgentsCompact(onSpecialistSelected = { activeSpecialist = it }, modifier = Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
 private fun AgentsCompact(
-    onConversation: () -> Unit,
+    onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
-            InsightsHeader()
+            AiCareHeader()
         }
-        item { SensorStreamCard() }
-        item { PipelineStatusCard() }
-        item { ConsensusCard(onConversation) }
+        item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
     }
 }
 
 @Composable
 private fun AgentsWide(
-    onConversation: () -> Unit,
+    onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-        item { InsightsHeader() }
+        item { AiCareHeader() }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(0.85f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                    SensorStreamCard()
-                    PipelineStatusCard()
+                    CareCouncilPanel(onSpecialistSelected = onSpecialistSelected)
                     JournalCard {
                         JournalLabel("Care model")
                         Text("Agents are reading live vitals, medication adherence, and recovery markers before proposing a single action.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
-                Column(modifier = Modifier.weight(1.35f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                    ConsensusCard(onConversation)
-                }
             }
         }
     }
 }
 
 @Composable
-private fun InsightsHeader() {
-    Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-        Text("Live Insights", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-        JournalLabel("Patient ID: SOVA-8821 // Real-time neural synthesis")
+private fun SpecialistCallView(
+    specialist: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var connected by remember(specialist) { mutableStateOf(false) }
+    LaunchedEffect(specialist) {
+        delay(3000)
+        connected = true
     }
-}
 
-@Composable
-private fun SensorStreamCard() {
-    JournalCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            JournalLabel("Sensor input stream", modifier = Modifier.weight(1f))
-            Text("ok", color = HealthColors.Success, style = MaterialTheme.typography.labelMedium)
+    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+        item {
+            CircularBackButton(onClick = onBack)
         }
-        SensorLine("Neural latency", "12ms", HealthColors.Accent)
-        SensorLine("Oxygen", "98%", HealthColors.Success)
-    }
-}
-
-@Composable
-private fun SensorLine(label: String, value: String, color: androidx.compose.ui.graphics.Color) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(HealthColors.SurfaceSubtle)
-            .padding(HealthSpacing.Xs),
-    ) {
-        Row {
-            JournalLabel(label, modifier = Modifier.weight(1f), color = color)
-            Text(value, color = HealthColors.Ink, style = MaterialTheme.typography.labelMedium)
-        }
-        Canvas(Modifier.fillMaxWidth().height(HealthSpacing.VitalBar)) {
-            val path = Path().apply {
-                moveTo(0f, size.height * 0.58f)
-                repeat(7) { index ->
-                    val x = size.width * (index + 1) / 8f
-                    val y = if (index % 2 == 0) size.height * 0.32f else size.height * 0.70f
-                    quadraticTo(x - size.width / 16f, y, x, size.height * 0.52f)
-                }
-            }
-            drawPath(path, color, style = Stroke(width = HealthSpacing.Stroke.toPx()))
-        }
-    }
-}
-
-@Composable
-private fun PipelineStatusCard() {
-    JournalCard {
-        JournalLabel("AI pipeline status")
-        listOf("Normalization", "Feature Extraction", "Agent Deliberation", "Synthesis Result").forEachIndexed { index, text ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text, modifier = Modifier.weight(1f), color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-                if (index < 2) {
-                    Text("ok", color = HealthColors.Success, style = MaterialTheme.typography.labelMedium)
+        item {
+            BoxWithConstraints {
+                if (connected) {
+                    if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
+                            ConnectedCallCard(specialist, Modifier.weight(0.92f))
+                            LiveCaptionCard(specialist, Modifier.weight(1.08f))
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+                            ConnectedCallCard(specialist)
+                            LiveCaptionCard(specialist)
+                        }
+                    }
                 } else {
-                    SmallCapsPill(if (index == 2) "Active" else "Wait", if (index == 2) HealthColors.SurfaceSubtle else HealthColors.MutedBlue)
+                    if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
+                            ConnectingCallCard(specialist, Modifier.weight(0.92f))
+                            WaitingCaptionCard(Modifier.weight(1.08f))
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+                            ConnectingCallCard(specialist)
+                            WaitingCaptionCard()
+                        }
+                    }
                 }
             }
         }
@@ -147,45 +152,156 @@ private fun PipelineStatusCard() {
 }
 
 @Composable
-private fun ConsensusCard(onConversation: () -> Unit) {
-    JournalCard(dark = true) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Consensus Deliberation", modifier = Modifier.weight(1f), color = HealthColors.Surface, style = MaterialTheme.typography.titleLarge)
-            JournalLabel("Protocol v4.2", color = HealthColors.Surface)
-        }
-        Column(
-            modifier = Modifier
-                .background(HealthColors.Surface)
-                .padding(HealthSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
-        ) {
-            DialogueBubble("CD", "Analyzing respiratory rhythm deviations. Index remains stable; maintain baseline.")
-            DialogueBubble("SN", "Observations consistent. Current protocol can continue.")
-            JournalLabel("Synthesizing conclusion")
-            DialogueBubble("CD", "Confirmed. Generating action plan for review.")
-            JournalCard(dark = true) {
-                Text("Final Analysis Output", color = HealthColors.Surface, style = MaterialTheme.typography.titleLarge.copy(fontStyle = FontStyle.Italic))
-                Text("Shift strategy to moderate hydration with baseline preservation. Efficiency index: 94.2%", color = HealthColors.Surface, style = MaterialTheme.typography.bodyLarge)
-                PrimaryButton("Approve action plan", onConversation)
-            }
+private fun CircularBackButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(HealthSpacing.Xl)
+            .clip(HealthShapes.Pill)
+            .background(HealthColors.Surface, HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(HealthSpacing.Icon)) {
+            val stroke = Stroke(width = HealthSpacing.Stroke.toPx() * 2.2f, cap = StrokeCap.Round)
+            drawLine(HealthColors.TextPrimary, Offset(size.width * 0.68f, size.height * 0.20f), Offset(size.width * 0.32f, size.height * 0.50f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            drawLine(HealthColors.TextPrimary, Offset(size.width * 0.32f, size.height * 0.50f), Offset(size.width * 0.68f, size.height * 0.80f), strokeWidth = stroke.width, cap = StrokeCap.Round)
         }
     }
 }
 
 @Composable
-private fun DialogueBubble(initials: String, text: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm), verticalAlignment = Alignment.Top) {
-        Text(
-            initials,
-            modifier = Modifier
-                .background(HealthColors.Accent, HealthShapes.Pill)
-                .padding(HealthSpacing.Sm),
-            color = HealthColors.Surface,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        JournalCard {
-            JournalLabel("Clinical director agent")
-            Text(text, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+private fun ConnectingCallCard(specialist: String, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "doctor-call-pulse")
+    val pulse by transition.animateFloat(
+        initialValue = 0.86f,
+        targetValue = 1.22f,
+        animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),
+        label = "pulse-scale",
+    )
+    val pulseAlpha by transition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.58f,
+        animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),
+        label = "pulse-alpha",
+    )
+
+    JournalCard(modifier = modifier) {
+        JournalLabel("Calling")
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
+        ) {
+            Box(modifier = Modifier.size(HealthSpacing.CouncilCardWidth), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(HealthSpacing.CouncilAvatar + HealthSpacing.Xl)
+                        .graphicsLayer {
+                            scaleX = pulse
+                            scaleY = pulse
+                            alpha = pulseAlpha
+                        }
+                        .background(HealthColors.AccentSoft, HealthShapes.Pill),
+                )
+                DoctorAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Md)
+            }
+            Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+            JournalLabel("Ringing secure line", color = HealthColors.Accent)
+            Text("Waiting for the AI doctor to join.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
         }
+    }
+}
+
+@Composable
+private fun ConnectedCallCard(specialist: String, modifier: Modifier = Modifier) {
+    JournalCard(modifier = modifier) {
+        JournalLabel("Connected")
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
+        ) {
+            DoctorAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Lg)
+            Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+            JournalLabel("AI doctor connected", color = HealthColors.Success)
+            Text("Secure voice check-in in progress.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+@Composable
+private fun DoctorAvatar(specialist: String, size: androidx.compose.ui.unit.Dp) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .background(HealthColors.AccentSoft, HealthShapes.Pill),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(specialist.initials(), color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+@Composable
+private fun WaitingCaptionCard(modifier: Modifier = Modifier) {
+    JournalCard(modifier = modifier) {
+        JournalLabel("Live captions")
+        Text("Connecting...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        Text("Captions will appear here when the AI doctor joins.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+private fun LiveCaptionCard(specialist: String, modifier: Modifier = Modifier) {
+    JournalCard(modifier = modifier) {
+        JournalLabel("Live captions")
+        liveCaptionsFor(specialist).forEach {
+            Text(it, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+private fun String.initials(): String =
+    split(" ")
+        .filter { it.isNotBlank() }
+        .takeLast(2)
+        .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
+        .joinToString("")
+        .take(2)
+
+private fun liveCaptionsFor(specialist: String): List<String> =
+    when {
+        specialist.contains("Cardio") -> listOf(
+            "$specialist: I’m reviewing your heart rate and rhythm trends now.",
+            "Patient: I don’t feel chest pain. My breathing feels normal.",
+            "$specialist: Good. Your current heart rate remains inside the expected recovery range.",
+            "$specialist: I recommend continued monitoring and hydration. Escalate if chest discomfort appears.",
+        )
+        specialist.contains("Pharma") -> listOf(
+            "$specialist: I’m checking medication timing and interaction risk.",
+            "Patient: I took the scheduled dose this morning.",
+            "$specialist: Adherence looks complete. No timing conflict is visible right now.",
+            "$specialist: Continue the current schedule unless your clinician changes the plan.",
+        )
+        specialist.contains("Behavioral") -> listOf(
+            "$specialist: I’m checking sleep, stress, and daily barriers.",
+            "Patient: Sleep was better, but I still feel tired.",
+            "$specialist: That can fit the recovery pattern. Keep activity light and predictable today.",
+            "$specialist: I’ll note fatigue without escalation because oxygen and heart signals are stable.",
+        )
+        else -> listOf(
+            "$specialist: I’m here. Tell me what changed since your last check-in.",
+            "Patient: I feel steady and took medication on time.",
+            "$specialist: Your signals support continued passive monitoring.",
+            "$specialist: Recommended action: hydrate, rest, and check back if symptoms change.",
+        )
+    }
+
+@Composable
+private fun AiCareHeader() {
+    Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+        Text("AI Care", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+        JournalLabel("Virtual care team")
+        Text("Choose a virtual specialist for a focused check-in.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
     }
 }

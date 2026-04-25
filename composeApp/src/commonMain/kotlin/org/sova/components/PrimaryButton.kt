@@ -9,6 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -25,7 +27,8 @@ fun PrimaryButton(
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = HealthSpacing.Xl + HealthSpacing.Sm),
+            .heightIn(min = HealthSpacing.Xl + HealthSpacing.Sm)
+            .pointerHoverIcon(PointerIcon.Hand),
         shape = HealthShapes.Pill,
         colors = ButtonDefaults.buttonColors(
             containerColor = HealthColors.Accent,

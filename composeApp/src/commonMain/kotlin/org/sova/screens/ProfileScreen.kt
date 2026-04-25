@@ -1,12 +1,16 @@
 package org.sova.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -15,7 +19,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontStyle
 import org.sova.components.ChipInput
 import org.sova.components.HealthDateField
@@ -29,6 +40,7 @@ import org.sova.components.PrimaryButton
 import org.sova.components.SecondaryButton
 import org.sova.components.SmallCapsPill
 import org.sova.design.HealthColors
+import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.logic.ProfileValidation
 import org.sova.model.MedicalProfile
@@ -41,34 +53,38 @@ fun ProfileScreen(
     onSave: (UserProfile, MedicalProfile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var editing by remember { mutableStateOf(false) }
+    var editingSection by remember { mutableStateOf<ProfileEditSection?>(null) }
 
-    if (editing) {
-        ProfileEditScreen(
-            user = user,
-            medical = medical,
-            onCancel = { editing = false },
-            onSave = { updatedUser, updatedMedical ->
-                onSave(updatedUser, updatedMedical)
-                editing = false
-            },
-            modifier = modifier,
-        )
-    } else {
-        ProfileSummaryScreen(
-            user = user,
-            medical = medical,
-            onEdit = { editing = true },
-            modifier = modifier,
-        )
-    }
+    ProfileSummaryScreen(
+        user = user,
+        medical = medical,
+        editingSection = editingSection,
+        onEdit = { editingSection = it },
+        onCancel = { editingSection = null },
+        onSave = { updatedUser, updatedMedical ->
+            onSave(updatedUser, updatedMedical)
+            editingSection = null
+        },
+        modifier = modifier,
+    )
+}
+
+private enum class ProfileEditSection {
+    Basic,
+    Body,
+    Medical,
+    Emergency,
+    Doctor,
 }
 
 @Composable
 private fun ProfileSummaryScreen(
     user: UserProfile,
     medical: MedicalProfile,
-    onEdit: () -> Unit,
+    editingSection: ProfileEditSection?,
+    onEdit: (ProfileEditSection) -> Unit,
+    onCancel: () -> Unit,
+    onSave: (UserProfile, MedicalProfile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
@@ -79,7 +95,6 @@ private fun ProfileSummaryScreen(
                     SmallCapsPill("Active recovery")
                     SmallCapsPill(user.sex, HealthColors.SurfaceSubtle)
                 }
-                SecondaryButton("Edit profile", onClick = onEdit)
             }
         }
         item {
@@ -97,38 +112,58 @@ private fun ProfileSummaryScreen(
         }
         item {
             JournalCard {
-                JournalLabel("Basic information")
-                InfoRow("Date of birth", user.dob)
-                InfoRow("Sex", user.sex)
+                if (editingSection == ProfileEditSection.Basic) {
+                    BasicInformationEditor(user, medical, onCancel, onSave)
+                } else {
+                    EditableSectionHeader("Basic information") { onEdit(ProfileEditSection.Basic) }
+                    InfoRow("Date of birth", user.dob)
+                    InfoRow("Sex", user.sex)
+                }
             }
         }
         item {
             JournalCard {
-                JournalLabel("Body measurements")
-                InfoRow("Height", user.heightLabel)
-                InfoRow("Weight", user.weightLabel)
+                if (editingSection == ProfileEditSection.Body) {
+                    BodyMeasurementsEditor(user, medical, onCancel, onSave)
+                } else {
+                    EditableSectionHeader("Body measurements") { onEdit(ProfileEditSection.Body) }
+                    InfoRow("Height", user.heightLabel)
+                    InfoRow("Weight", user.weightLabel)
+                }
             }
         }
         item {
             JournalCard {
-                JournalLabel("Medical information")
-                InfoRow("Conditions", readableList(medical.conditions))
-                InfoRow("Medications", readableList(medical.medications))
-                InfoRow("Allergies", readableList(medical.allergies))
+                if (editingSection == ProfileEditSection.Medical) {
+                    MedicalInformationEditor(user, medical, onCancel, onSave)
+                } else {
+                    EditableSectionHeader("Medical information") { onEdit(ProfileEditSection.Medical) }
+                    InfoRow("Conditions", readableList(medical.conditions))
+                    InfoRow("Medications", readableList(medical.medications))
+                    InfoRow("Allergies", readableList(medical.allergies))
+                }
             }
         }
         item {
             JournalCard {
-                JournalLabel("Emergency contact")
-                InfoRow("Name", user.emergencyContactName)
-                InfoRow("Phone", user.emergencyContactPhone)
+                if (editingSection == ProfileEditSection.Emergency) {
+                    EmergencyContactEditor(user, medical, onCancel, onSave)
+                } else {
+                    EditableSectionHeader("Emergency contact") { onEdit(ProfileEditSection.Emergency) }
+                    InfoRow("Name", user.emergencyContactName)
+                    InfoRow("Phone", user.emergencyContactPhone)
+                }
             }
         }
         item {
             JournalCard {
-                JournalLabel("Doctor information")
-                InfoRow("Doctor", user.doctorName?.takeIf { it.isNotBlank() } ?: "Not provided")
-                InfoRow("Contact", user.doctorContact?.takeIf { it.isNotBlank() } ?: "Not provided")
+                if (editingSection == ProfileEditSection.Doctor) {
+                    DoctorInformationEditor(user, medical, onCancel, onSave)
+                } else {
+                    EditableSectionHeader("Doctor information") { onEdit(ProfileEditSection.Doctor) }
+                    InfoRow("Doctor", user.doctorName?.takeIf { it.isNotBlank() } ?: "Not provided")
+                    InfoRow("Contact", user.doctorContact?.takeIf { it.isNotBlank() } ?: "Not provided")
+                }
             }
         }
         item {
@@ -142,127 +177,225 @@ private fun ProfileSummaryScreen(
 }
 
 @Composable
-private fun ProfileEditScreen(
+private fun EditableSectionHeader(title: String, onEdit: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        JournalLabel(title, modifier = Modifier.weight(1f))
+        EditPencilButton(onClick = onEdit)
+    }
+}
+
+@Composable
+private fun EditPencilButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(HealthSpacing.Lg)
+            .clip(HealthShapes.Pill)
+            .background(HealthColors.SurfaceSubtle, HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(HealthSpacing.Icon)) {
+            val stroke = Stroke(width = HealthSpacing.Stroke.toPx() * 1.8f, cap = StrokeCap.Round)
+            drawLine(
+                color = HealthColors.TextSecondary,
+                start = Offset(size.width * 0.28f, size.height * 0.72f),
+                end = Offset(size.width * 0.72f, size.height * 0.28f),
+                strokeWidth = stroke.width,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = HealthColors.TextSecondary,
+                start = Offset(size.width * 0.22f, size.height * 0.78f),
+                end = Offset(size.width * 0.34f, size.height * 0.74f),
+                strokeWidth = stroke.width,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BasicInformationEditor(
     user: UserProfile,
     medical: MedicalProfile,
     onCancel: () -> Unit,
     onSave: (UserProfile, MedicalProfile) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     var firstName by remember(user) { mutableStateOf(user.firstName) }
     var lastName by remember(user) { mutableStateOf(user.lastName) }
     var dobDigits by remember(user) { mutableStateOf(user.dob.filter { it.isDigit() }.take(8)) }
     var sex by remember(user) { mutableStateOf(user.sex) }
-    var feet by remember(user) { mutableStateOf(user.heightFeet.toString()) }
-    var inches by remember(user) { mutableStateOf(user.heightInches.toString()) }
-    var weight by remember(user) { mutableStateOf(user.weightPounds.toString()) }
-    var conditions by remember(medical) { mutableStateOf(medical.conditions.joinToString(", ")) }
-    var medications by remember(medical) { mutableStateOf(medical.medications.joinToString(", ")) }
-    var allergies by remember(medical) { mutableStateOf(medical.allergies.joinToString(", ")) }
-    var emergencyName by remember(user) { mutableStateOf(user.emergencyContactName) }
-    var emergencyPhone by remember(user) { mutableStateOf(user.emergencyContactPhone) }
-    var doctorName by remember(user) { mutableStateOf(user.doctorName.orEmpty()) }
-    var doctorContact by remember(user) { mutableStateOf(user.doctorContact.orEmpty()) }
-
     val dob = formatDateOfBirth(dobDigits)
     val firstNameError = ProfileValidation.nameError(firstName, "First name")
     val lastNameError = ProfileValidation.nameError(lastName, "Last name")
     val dobError = ProfileValidation.dobError(dob)
     val sexError = ProfileValidation.requiredError(sex, "Sex")
+    val canSave = listOf(firstNameError, lastNameError, dobError, sexError).all { it == null }
+
+    JournalLabel("Basic information")
+    HealthTextField("First name", firstName, { firstName = it }, errorText = firstNameError)
+    HealthTextField("Last name", lastName, { lastName = it }, errorText = lastNameError)
+    HealthDateField("Date of birth", dobDigits, { dobDigits = it }, helperText = "MM/DD/YYYY", errorText = dobError)
+    HealthSegmentedSelector("Sex", listOf("Female", "Male", "Other"), sex, { sex = it }, errorText = sexError)
+    SectionEditActions(
+        canSave = canSave,
+        onCancel = onCancel,
+        onSave = {
+            onSave(
+                user.copy(
+                    firstName = firstName.trim(),
+                    lastName = lastName.trim(),
+                    dob = dob,
+                    sex = sex,
+                ),
+                medical,
+            )
+        },
+    )
+}
+
+@Composable
+private fun BodyMeasurementsEditor(
+    user: UserProfile,
+    medical: MedicalProfile,
+    onCancel: () -> Unit,
+    onSave: (UserProfile, MedicalProfile) -> Unit,
+) {
+    var feet by remember(user) { mutableStateOf(user.heightFeet.toString()) }
+    var inches by remember(user) { mutableStateOf(user.heightInches.toString()) }
+    var weight by remember(user) { mutableStateOf(user.weightPounds.toString()) }
     val feetError = ProfileValidation.numberRangeError(feet, "Feet", 1, 8)
     val inchesError = ProfileValidation.numberRangeError(inches, "Inches", 0, 11)
     val weightError = ProfileValidation.numberRangeError(weight, "Weight", 20, 700)
+    val canSave = listOf(feetError, inchesError, weightError).all { it == null }
+
+    JournalLabel("Body measurements")
+    Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+        HealthNumberField("Feet", feet, { feet = it }, modifier = Modifier.weight(1f), errorText = feetError)
+        HealthNumberField("Inches", inches, { inches = it }, modifier = Modifier.weight(1f), errorText = inchesError)
+    }
+    HealthNumberField("Weight", weight, { weight = it }, helperText = "Pounds", errorText = weightError)
+    SectionEditActions(
+        canSave = canSave,
+        onCancel = onCancel,
+        onSave = {
+            onSave(
+                user.copy(
+                    heightFeet = feet.toInt(),
+                    heightInches = inches.toInt(),
+                    weightPounds = weight.toInt(),
+                ),
+                medical,
+            )
+        },
+    )
+}
+
+@Composable
+private fun MedicalInformationEditor(
+    user: UserProfile,
+    medical: MedicalProfile,
+    onCancel: () -> Unit,
+    onSave: (UserProfile, MedicalProfile) -> Unit,
+) {
+    var conditions by remember(medical) { mutableStateOf(medical.conditions.joinToString(", ")) }
+    var medications by remember(medical) { mutableStateOf(medical.medications.joinToString(", ")) }
+    var allergies by remember(medical) { mutableStateOf(medical.allergies.joinToString(", ")) }
+
+    JournalLabel("Medical information")
+    ChipInput("Conditions", conditions, { conditions = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(conditions))
+    ChipInput("Medications", medications, { medications = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(medications))
+    ChipInput("Allergies", allergies, { allergies = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(allergies))
+    SectionEditActions(
+        canSave = true,
+        onCancel = onCancel,
+        onSave = {
+            onSave(
+                user,
+                medical.copy(
+                    conditions = ProfileValidation.splitList(conditions),
+                    medications = ProfileValidation.splitList(medications),
+                    allergies = ProfileValidation.splitList(allergies),
+                ),
+            )
+        },
+    )
+}
+
+@Composable
+private fun EmergencyContactEditor(
+    user: UserProfile,
+    medical: MedicalProfile,
+    onCancel: () -> Unit,
+    onSave: (UserProfile, MedicalProfile) -> Unit,
+) {
+    var emergencyName by remember(user) { mutableStateOf(user.emergencyContactName) }
+    var emergencyPhone by remember(user) { mutableStateOf(user.emergencyContactPhone) }
     val emergencyNameError = ProfileValidation.requiredError(emergencyName, "Emergency contact")
     val emergencyPhoneError = ProfileValidation.phoneError(emergencyPhone, required = true)
-    val doctorContactError = ProfileValidation.phoneError(doctorContact, required = false)
-    val canSave = listOf(
-        firstNameError,
-        lastNameError,
-        dobError,
-        sexError,
-        feetError,
-        inchesError,
-        weightError,
-        emergencyNameError,
-        emergencyPhoneError,
-        doctorContactError,
-    ).all { it == null }
+    val canSave = listOf(emergencyNameError, emergencyPhoneError).all { it == null }
 
-    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                JournalLabel("Profile")
-                Text("Edit patient details", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge.copy(fontStyle = FontStyle.Italic))
-                Text("These details appear in Sova summaries and doctor reports.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-        item {
-            JournalCard {
-                JournalLabel("Basic information")
-                HealthTextField("First name", firstName, { firstName = it }, errorText = firstNameError)
-                HealthTextField("Last name", lastName, { lastName = it }, errorText = lastNameError)
-                HealthDateField("Date of birth", dobDigits, { dobDigits = it }, helperText = "MM/DD/YYYY", errorText = dobError)
-                HealthSegmentedSelector("Sex", listOf("Female", "Male", "Other"), sex, { sex = it }, errorText = sexError)
-            }
-        }
-        item {
-            JournalCard {
-                JournalLabel("Body measurements")
-                Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                    HealthNumberField("Feet", feet, { feet = it }, modifier = Modifier.weight(1f), errorText = feetError)
-                    HealthNumberField("Inches", inches, { inches = it }, modifier = Modifier.weight(1f), errorText = inchesError)
-                }
-                HealthNumberField("Weight", weight, { weight = it }, helperText = "Pounds", errorText = weightError)
-            }
-        }
-        item {
-            JournalCard {
-                JournalLabel("Medical information")
-                ChipInput("Conditions", conditions, { conditions = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(conditions))
-                ChipInput("Medications", medications, { medications = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(medications))
-                ChipInput("Allergies", allergies, { allergies = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(allergies))
-            }
-        }
-        item {
-            JournalCard {
-                JournalLabel("Care contacts")
-                HealthTextField("Emergency contact name", emergencyName, { emergencyName = it }, errorText = emergencyNameError)
-                HealthTextField("Emergency contact phone", emergencyPhone, { emergencyPhone = it }, errorText = emergencyPhoneError)
-                HealthTextField("Doctor name", doctorName, { doctorName = it }, helperText = "Optional")
-                HealthTextField("Doctor contact", doctorContact, { doctorContact = it }, helperText = "Optional", errorText = doctorContactError)
-            }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                PrimaryButton(
-                    text = "Save profile",
-                    enabled = canSave,
-                    onClick = {
-                        onSave(
-                            UserProfile(
-                                firstName = firstName.trim(),
-                                lastName = lastName.trim(),
-                                dob = dob,
-                                sex = sex,
-                                heightFeet = feet.toInt(),
-                                heightInches = inches.toInt(),
-                                weightPounds = weight.toInt(),
-                                emergencyContactName = emergencyName.trim(),
-                                emergencyContactPhone = emergencyPhone.trim(),
-                                doctorName = doctorName.trim().takeIf { it.isNotBlank() },
-                                doctorContact = doctorContact.trim().takeIf { it.isNotBlank() },
-                            ),
-                            MedicalProfile(
-                                conditions = ProfileValidation.splitList(conditions),
-                                medications = ProfileValidation.splitList(medications),
-                                allergies = ProfileValidation.splitList(allergies),
-                            ),
-                        )
-                    },
-                )
-                SecondaryButton("Cancel", onClick = onCancel)
-            }
-        }
+    JournalLabel("Emergency contact")
+    HealthTextField("Emergency contact name", emergencyName, { emergencyName = it }, errorText = emergencyNameError)
+    HealthTextField("Emergency contact phone", emergencyPhone, { emergencyPhone = it }, errorText = emergencyPhoneError)
+    SectionEditActions(
+        canSave = canSave,
+        onCancel = onCancel,
+        onSave = {
+            onSave(
+                user.copy(
+                    emergencyContactName = emergencyName.trim(),
+                    emergencyContactPhone = emergencyPhone.trim(),
+                ),
+                medical,
+            )
+        },
+    )
+}
+
+@Composable
+private fun DoctorInformationEditor(
+    user: UserProfile,
+    medical: MedicalProfile,
+    onCancel: () -> Unit,
+    onSave: (UserProfile, MedicalProfile) -> Unit,
+) {
+    var doctorName by remember(user) { mutableStateOf(user.doctorName.orEmpty()) }
+    var doctorContact by remember(user) { mutableStateOf(user.doctorContact.orEmpty()) }
+    val doctorContactError = ProfileValidation.phoneError(doctorContact, required = false)
+    val canSave = doctorContactError == null
+
+    JournalLabel("Doctor information")
+    HealthTextField("Doctor name", doctorName, { doctorName = it }, helperText = "Optional")
+    HealthTextField("Doctor contact", doctorContact, { doctorContact = it }, helperText = "Optional", errorText = doctorContactError)
+    SectionEditActions(
+        canSave = canSave,
+        onCancel = onCancel,
+        onSave = {
+            onSave(
+                user.copy(
+                    doctorName = doctorName.trim().takeIf { it.isNotBlank() },
+                    doctorContact = doctorContact.trim().takeIf { it.isNotBlank() },
+                ),
+                medical,
+            )
+        },
+    )
+}
+
+@Composable
+private fun SectionEditActions(
+    canSave: Boolean,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+        SecondaryButton("Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
+        PrimaryButton("Save", onClick = onSave, modifier = Modifier.weight(1f), enabled = canSave)
     }
 }
 

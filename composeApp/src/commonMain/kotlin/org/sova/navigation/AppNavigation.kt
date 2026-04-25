@@ -28,6 +28,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
 import org.sova.data.OnboardingPersistence
 import org.sova.data.SampleHealthData
@@ -235,6 +237,7 @@ private fun DesktopTopNavigation(
                 modifier = Modifier
                     .weight(1f)
                     .clip(HealthShapes.Pill)
+                    .pointerHoverIcon(PointerIcon.Hand)
                     .clickable { onRouteSelected(it) },
                 shape = HealthShapes.Pill,
                 color = if (selected) HealthColors.SurfaceSubtle else HealthColors.Surface,
@@ -297,6 +300,7 @@ private fun NavItem(
         modifier = modifier
             .clip(HealthShapes.Pill)
             .background(background, HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
             .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         contentAlignment = Alignment.Center,

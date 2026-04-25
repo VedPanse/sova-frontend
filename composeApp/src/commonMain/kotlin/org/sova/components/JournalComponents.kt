@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
@@ -68,7 +69,6 @@ fun JournalTopBar(
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.titleLarge.copy(fontStyle = FontStyle.Italic),
         )
-        Text("**", color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -126,15 +126,19 @@ fun StabilityIndex(
             )
             Text("/100", color = HealthColors.MutedBlue, style = MaterialTheme.typography.bodyLarge)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-            repeat(4) { index ->
-                Box(
-                    modifier = Modifier
-                        .width(HealthSpacing.Lg)
-                        .height(HealthSpacing.SmallBar)
-                        .background(if (index < 3) HealthColors.Success else HealthColors.SurfaceSubtle),
-                )
-            }
+        Box(
+            modifier = Modifier
+                .width(HealthSpacing.StabilityRailWidth)
+                .height(HealthSpacing.SmallBar)
+                .clip(HealthShapes.Pill)
+                .background(HealthColors.SurfaceSubtle),
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(HealthSpacing.StabilityRailWidth * (score.coerceIn(0, 100) / 100f))
+                    .height(HealthSpacing.SmallBar)
+                    .background(HealthColors.Success),
+            )
         }
     }
 }
