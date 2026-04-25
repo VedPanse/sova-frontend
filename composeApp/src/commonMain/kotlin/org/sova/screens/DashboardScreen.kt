@@ -75,13 +75,15 @@ private fun DashboardWide(
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(0.95f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+                Column(modifier = Modifier.weight(1.0f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                     StatusHeader(user)
                     CurrentVitalsCard(vitals)
-                    LiveInsightsPanel()
                 }
-                Column(modifier = Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+                Column(modifier = Modifier.weight(1.0f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                     TrajectoryCard()
+                }
+                Column(modifier = Modifier.weight(1.0f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+                    LiveInsightsPanel()
                     JournalCard {
                         JournalLabel("Recommended action")
                         Text(result.recommendation, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)

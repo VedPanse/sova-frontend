@@ -124,8 +124,8 @@ private fun SpecialistCallView(
                 if (connected) {
                     if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
                         Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                            ConnectedCallCard(specialist, Modifier.weight(0.92f))
-                            LiveCaptionCard(specialist, Modifier.weight(1.08f))
+                            ConnectedCallCard(specialist, Modifier.weight(0.80f))
+                            LiveCaptionCard(specialist, Modifier.weight(0.20f))
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
@@ -136,8 +136,8 @@ private fun SpecialistCallView(
                 } else {
                     if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
                         Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                            ConnectingCallCard(specialist, Modifier.weight(0.92f))
-                            WaitingCaptionCard(Modifier.weight(1.08f))
+                            ConnectingCallCard(specialist, Modifier.weight(0.80f))
+                            WaitingCaptionCard(Modifier.weight(0.20f))
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {

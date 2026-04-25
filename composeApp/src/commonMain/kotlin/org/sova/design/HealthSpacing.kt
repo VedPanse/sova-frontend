@@ -22,6 +22,6 @@ object HealthSpacing {
     val ChartHeight = 210.dp
     val SidebarWidth = 240.dp
     val ContentMaxWidth = 420.dp
-    val DesktopContentMaxWidth = 780.dp
+    val DesktopContentMaxWidth = 1320.dp
     val DesktopBreakpoint = 840.dp
 }
