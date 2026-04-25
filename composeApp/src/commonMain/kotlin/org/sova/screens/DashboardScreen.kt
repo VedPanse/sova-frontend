@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +22,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
 import org.sova.components.RecoveryCurve
@@ -237,6 +240,7 @@ private fun CouncilAgentCard(agent: CouncilAgent) {
     Column(
         modifier = Modifier
             .width(HealthSpacing.CouncilCardWidth)
+            .height(HealthSpacing.CouncilCardHeight)
             .background(HealthColors.SurfaceSubtle, HealthShapes.Card)
             .border(HealthSpacing.Stroke, HealthColors.Border, HealthShapes.Card)
             .padding(HealthSpacing.Sm),
@@ -251,16 +255,30 @@ private fun CouncilAgentCard(agent: CouncilAgent) {
         ) {
             Text(agent.initials, color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
         }
-        Text(agent.name, color = HealthColors.TextPrimary, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text = agent.name,
+            color = HealthColors.TextPrimary,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
         Text(
             text = agent.role,
+            modifier = Modifier.weight(1f),
             color = HealthColors.TextSecondary,
             style = MaterialTheme.typography.bodyLarge,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
         Text(
             text = "Start check-in",
             color = HealthColors.Success,
             style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }
