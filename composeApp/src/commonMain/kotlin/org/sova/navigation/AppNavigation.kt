@@ -125,9 +125,9 @@ fun AppNavigation() {
 
         runCatching {
             val request = user.toAgentDeliberationStartRequest(medical, vitals)
-            val session = AgentDeliberationApi.start(request)
+            AgentDeliberationApi.start(request)
             deliberationState = AgentDeliberationState.Streaming(messages = emptyList())
-            AgentDeliberationApi.observe(session.patientId).collect { event ->
+            AgentDeliberationApi.observe(request.patientId).collect { event ->
                 when (event) {
                     is AgentDeliberationEvent.Started -> {
                         deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
