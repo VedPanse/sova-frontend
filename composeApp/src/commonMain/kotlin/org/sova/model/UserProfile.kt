@@ -14,11 +14,10 @@ data class UserProfile(
     val dischargeDate: String?,
     val emergencyContactName: String,
     val emergencyContactPhone: String,
-    val caregiverName: String?,
-    val caregiverContact: String?,
+    val doctorPhoneNumber: String?,
 ) {
     val fullName: String
-        get() = "$firstName $lastName"
+        get() = listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "Patient" }
 
     val heightLabel: String
         get() = "$heightFeet ft $heightInches in"
@@ -26,6 +25,6 @@ data class UserProfile(
     val weightLabel: String
         get() = "$weightPounds lb"
 
-    val caregiverLabel: String
-        get() = listOfNotNull(caregiverName, caregiverContact).joinToString(" - ").ifBlank { "Not provided" }
+    val doctorPhoneLabel: String
+        get() = doctorPhoneNumber?.takeIf { it.isNotBlank() } ?: "Not provided"
 }

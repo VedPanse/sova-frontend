@@ -31,7 +31,7 @@ fun ShareWithCaregiverScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                 Text("Care summary", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
-                Text("A concise update for ${user.caregiverName ?: "the caregiver"}.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                Text("A concise update for the care team.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             }
         }
         item {
@@ -39,13 +39,10 @@ fun ShareWithCaregiverScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     SectionHeader("Patient")
                     InfoRow("Patient ID", user.patientId)
-                    InfoRow("Name", user.fullName)
                     InfoRow("Age", ProfileValidation.ageFromDob(user.dob)?.toString() ?: "Not available")
                     InfoRow("Date of birth", user.dob)
                     InfoRow("Sex", user.sex)
                     InfoRow("Address", user.address?.takeIf { it.isNotBlank() } ?: "Not provided")
-                    InfoRow("Height", user.heightLabel)
-                    InfoRow("Weight", user.weightLabel)
                 }
             }
         }
@@ -53,8 +50,7 @@ fun ShareWithCaregiverScreen(
             HealthCard {
                 Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     SectionHeader("Medical details")
-                    InfoRow("Conditions", readableList(medical.conditions))
-                    InfoRow("Medications", readableList(medical.medications))
+                    InfoRow("Current medications", readableList(medical.medications))
                     InfoRow("Allergies", readableList(medical.allergies))
                     InfoRow("Surgery", user.surgery?.takeIf { it.isNotBlank() } ?: "Not provided")
                     InfoRow("Discharge date", user.dischargeDate?.takeIf { it.isNotBlank() } ?: "Not provided")
@@ -80,7 +76,7 @@ fun ShareWithCaregiverScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     SectionHeader("Care contacts")
                     InfoRow("Emergency", "${user.emergencyContactName}, ${user.emergencyContactPhone}")
-                    InfoRow("Caregiver", user.caregiverLabel)
+                    InfoRow("Care team phone", user.doctorPhoneLabel)
                 }
             }
         }

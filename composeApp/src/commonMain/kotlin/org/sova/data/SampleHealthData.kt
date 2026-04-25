@@ -1,9 +1,10 @@
 package org.sova.data
 
 import org.sova.logic.SimulationEngine
-import org.sova.logic.PatientIdGenerator
 import org.sova.model.Agent
+import org.sova.model.AgentDeliberationMessage
 import org.sova.model.AgentMessage
+import org.sova.model.DeliberationStance
 import org.sova.model.HistoryItem
 import org.sova.model.MedicalProfile
 import org.sova.model.UserProfile
@@ -11,7 +12,7 @@ import org.sova.model.Vitals
 
 object SampleHealthData {
     val user = UserProfile(
-        patientId = PatientIdGenerator.newUuid(),
+        patientId = "f7e4c2b8-12d9-4f3f-8d26-0a8c5f2d8f31",
         firstName = "Maya",
         lastName = "Shah",
         dob = "02/14/1988",
@@ -24,8 +25,7 @@ object SampleHealthData {
         dischargeDate = "04/18/2026",
         emergencyContactName = "Arun Shah",
         emergencyContactPhone = "(415) 555-0134",
-        caregiverName = "Anika Shah",
-        caregiverContact = "(415) 555-0178",
+        doctorPhoneNumber = "(415) 555-0178",
     )
 
     val medical = MedicalProfile(
@@ -56,6 +56,44 @@ object SampleHealthData {
         AgentMessage("Recovery", "No recovery drop is visible."),
         AgentMessage("Medication", "Medication routine is complete."),
         AgentMessage("Care", "Recommendation: continue monitoring."),
+    )
+
+    val deliberation = listOf(
+        AgentDeliberationMessage(
+            agentName = "Dr. Cardio",
+            specialty = "Cardiology",
+            initials = "CD",
+            message = "Heart rate is elevated, but the pattern is consistent with post-discharge recovery. I do not see an emergency rhythm signal.",
+            stance = DeliberationStance.Observe,
+        ),
+        AgentDeliberationMessage(
+            agentName = "Dr. Pharma",
+            specialty = "Medication",
+            initials = "PH",
+            message = "Medication was missed this morning. That increases near-term risk and could explain some instability.",
+            stance = DeliberationStance.Concern,
+        ),
+        AgentDeliberationMessage(
+            agentName = "Nutritionist",
+            specialty = "Recovery nutrition",
+            initials = "NT",
+            message = "Hydration and a light meal would be a reasonable first step before escalating, unless symptoms worsen.",
+            stance = DeliberationStance.Support,
+        ),
+        AgentDeliberationMessage(
+            agentName = "Behavioral Health",
+            specialty = "Sleep and stress",
+            initials = "BH",
+            message = "Sleep is adequate. I do not think fatigue alone explains the risk change today.",
+            stance = DeliberationStance.Observe,
+        ),
+        AgentDeliberationMessage(
+            agentName = "Sova Lead",
+            specialty = "Decision",
+            initials = "SV",
+            message = "Consensus: ask for a short AI care check-in, confirm medication timing, and keep caregiver escalation ready if oxygen trends down.",
+            stance = DeliberationStance.Decision,
+        ),
     )
 
     val history = listOf(

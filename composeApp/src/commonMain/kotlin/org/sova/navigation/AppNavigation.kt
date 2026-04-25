@@ -17,9 +17,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,8 +33,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
-import org.sova.data.OnboardingPersistence
+import kotlinx.coroutines.launch
+import org.sova.data.PatientProfileApi
+import org.sova.data.PatientProfilePersistence
 import org.sova.data.SampleHealthData
+import org.sova.data.toPatientProfilePayload
 import org.sova.components.JournalTopBar
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
@@ -51,12 +56,42 @@ import org.sova.screens.SimulationScreen
 
 @Composable
 fun AppNavigation() {
-    val savedOnboarding = remember { OnboardingPersistence.load() }
-    var onboarded by remember { mutableStateOf(savedOnboarding != null) }
+    val patientId = remember { PatientProfilePersistence.patientId() }
+    val coroutineScope = rememberCoroutineScope()
+    var loaded by remember { mutableStateOf(false) }
+    var onboarded by remember { mutableStateOf(false) }
     var route by remember { mutableStateOf(AppRoute.Home) }
     var simulationRun by remember { mutableStateOf(false) }
-    var userProfile by remember { mutableStateOf<UserProfile?>(savedOnboarding?.user) }
-    var medicalProfile by remember { mutableStateOf<MedicalProfile?>(savedOnboarding?.medical) }
+    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
+    var medicalProfile by remember { mutableStateOf<MedicalProfile?>(null) }
+    var syncMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(patientId) {
+        val draft = PatientProfilePersistence.loadDraft()
+        if (draft != null) {
+            if (draft.hasRequiredFields()) {
+                userProfile = draft.toUserProfile()
+                medicalProfile = draft.toMedicalProfile()
+                onboarded = true
+                if (PatientProfileApi.sync(draft)) {
+                    PatientProfilePersistence.clearDraft()
+                    syncMessage = null
+                } else {
+                    syncMessage = "Saved locally. Sync will retry."
+                }
+            } else {
+                onboarded = false
+            }
+        } else {
+            val remote = PatientProfileApi.fetch(patientId)
+            if (remote != null && remote.hasRequiredFields()) {
+                userProfile = remote.toUserProfile()
+                medicalProfile = remote.toMedicalProfile()
+                onboarded = true
+            }
+        }
+        loaded = true
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -64,19 +99,33 @@ fun AppNavigation() {
             .background(HealthColors.Background),
     ) {
         val isWide = maxWidth >= HealthSpacing.DesktopBreakpoint
-        if (!onboarded) {
+        if (!loaded) {
+            CenteredContent {
+                Text("Loading Sova...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            }
+        } else if (!onboarded) {
             Column(Modifier.fillMaxSize()) {
                 CenteredChrome {
                     JournalTopBar()
                 }
                 CenteredContent(modifier = Modifier.weight(1f)) {
                     OnboardingScreen(
+                        patientId = patientId,
                         onComplete = { user, medical ->
-                            OnboardingPersistence.save(user, medical)
+                            val payload = user.toPatientProfilePayload(medical)
+                            PatientProfilePersistence.saveDraft(payload)
                             userProfile = user
                             medicalProfile = medical
                             onboarded = true
                             route = AppRoute.Home
+                            coroutineScope.launch {
+                                if (PatientProfileApi.sync(payload)) {
+                                    PatientProfilePersistence.clearDraft()
+                                    syncMessage = null
+                                } else {
+                                    syncMessage = "Saved locally. Sync will retry."
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -97,9 +146,18 @@ fun AppNavigation() {
                         route = route,
                         simulationRun = simulationRun,
                         onProfileSave = { user, medical ->
-                            OnboardingPersistence.save(user, medical)
+                            val payload = user.toPatientProfilePayload(medical)
+                            PatientProfilePersistence.saveDraft(payload)
                             userProfile = user
                             medicalProfile = medical
+                            coroutineScope.launch {
+                                if (PatientProfileApi.sync(payload)) {
+                                    PatientProfilePersistence.clearDraft()
+                                    syncMessage = null
+                                } else {
+                                    syncMessage = "Saved locally. Sync will retry."
+                                }
+                            }
                         },
                         onRoute = { route = it },
                     ) {
@@ -120,9 +178,18 @@ fun AppNavigation() {
                         route = route,
                         simulationRun = simulationRun,
                         onProfileSave = { user, medical ->
-                            OnboardingPersistence.save(user, medical)
+                            val payload = user.toPatientProfilePayload(medical)
+                            PatientProfilePersistence.saveDraft(payload)
                             userProfile = user
                             medicalProfile = medical
+                            coroutineScope.launch {
+                                if (PatientProfileApi.sync(payload)) {
+                                    PatientProfilePersistence.clearDraft()
+                                    syncMessage = null
+                                } else {
+                                    syncMessage = "Saved locally. Sync will retry."
+                                }
+                            }
                         },
                         onRoute = { route = it },
                     ) {
@@ -163,6 +230,7 @@ private fun RouteContent(
         )
         AppRoute.Agents -> AgentsScreen(
             agents = data.agents,
+            deliberationMessages = data.deliberation,
             onConversation = { onRoute(AppRoute.Conversation) },
             modifier = Modifier.fillMaxSize(),
         )

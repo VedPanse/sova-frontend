@@ -2,7 +2,6 @@ package org.sova.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.LinearProgressIndicator
@@ -19,7 +18,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import org.sova.components.ChipInput
 import org.sova.components.HealthCard
 import org.sova.components.HealthDateField
-import org.sova.components.HealthNumberField
 import org.sova.components.HealthSegmentedSelector
 import org.sova.components.HealthTextField
 import org.sova.components.PrimaryButton
@@ -27,25 +25,19 @@ import org.sova.components.SecondaryButton
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
-import org.sova.logic.PatientIdGenerator
 import org.sova.logic.ProfileValidation
 import org.sova.model.MedicalProfile
 import org.sova.model.UserProfile
 
 @Composable
 fun OnboardingScreen(
+    patientId: String,
     onComplete: (UserProfile, MedicalProfile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var step by remember { mutableIntStateOf(0) }
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
     var dobDigits by remember { mutableStateOf("") }
     var sex by remember { mutableStateOf("") }
-    var feet by remember { mutableStateOf("") }
-    var inches by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("") }
-    var conditions by remember { mutableStateOf("") }
     var medications by remember { mutableStateOf("") }
     var allergies by remember { mutableStateOf("") }
     var surgery by remember { mutableStateOf("") }
@@ -53,44 +45,33 @@ fun OnboardingScreen(
     var address by remember { mutableStateOf("") }
     var emergencyName by remember { mutableStateOf("") }
     var emergencyPhone by remember { mutableStateOf("") }
-    var caregiverName by remember { mutableStateOf("") }
-    var caregiverContact by remember { mutableStateOf("") }
+    var doctorPhoneNumber by remember { mutableStateOf("") }
 
     val steps = listOf(
-        WizardStep("Your name", "Tell Sova who it is monitoring."),
         WizardStep("Birth and sex", "This helps compare signals more carefully."),
-        WizardStep("Body", "A simple baseline for health context."),
-        WizardStep("Medical notes", "Optional details your care team may need."),
         WizardStep("Recovery context", "A few details for caregiver handoffs."),
+        WizardStep("Medical notes", "Details your care team may need."),
         WizardStep("Care contacts", "Who should be easy to reach."),
     )
 
-    val firstNameError = visibleError(firstName) { ProfileValidation.nameError(it, "First name") }
-    val lastNameError = visibleError(lastName) { ProfileValidation.nameError(it, "Last name") }
     val dob = formatDateOfBirth(dobDigits)
     val dobError = visibleError(dobDigits) { ProfileValidation.dobError(dob) }
     val sexError: String? = null
-    val feetError = visibleError(feet) { ProfileValidation.numberRangeError(it, "Feet", 1, 8) }
-    val inchesError = visibleError(inches) { ProfileValidation.numberRangeError(it, "Inches", 0, 11) }
-    val weightError = visibleError(weight) { ProfileValidation.numberRangeError(it, "Weight", 20, 700) }
     val dischargeDate = formatDateOfBirth(dischargeDigits)
-    val dischargeDateError = visibleError(dischargeDigits) { ProfileValidation.optionalDateError(dischargeDate, "discharge") }
+    val surgeryError = visibleError(surgery) { ProfileValidation.requiredError(it, "Surgery") }
+    val dischargeDateError = visibleError(dischargeDigits) { ProfileValidation.dateError(dischargeDate, "Discharge date") }
     val emergencyNameError = visibleError(emergencyName) { ProfileValidation.requiredError(it, "Emergency contact name") }
     val emergencyPhoneError = visibleError(emergencyPhone) { ProfileValidation.phoneError(it, required = true) }
-    val caregiverContactError = visibleError(caregiverContact) { ProfileValidation.phoneError(it, required = false) }
+    val doctorPhoneError = visibleError(doctorPhoneNumber) { ProfileValidation.phoneError(it, required = false) }
 
     val currentStepValid = when (step) {
-        0 -> ProfileValidation.nameError(firstName, "First name") == null &&
-            ProfileValidation.nameError(lastName, "Last name") == null
-        1 -> ProfileValidation.dobError(dob) == null && sex.isNotBlank()
-        2 -> ProfileValidation.numberRangeError(feet, "Feet", 1, 8) == null &&
-            ProfileValidation.numberRangeError(inches, "Inches", 0, 11) == null &&
-            ProfileValidation.numberRangeError(weight, "Weight", 20, 700) == null
-        3 -> true
-        4 -> ProfileValidation.optionalDateError(dischargeDate, "discharge") == null
+        0 -> ProfileValidation.dobError(dob) == null && sex.isNotBlank()
+        1 -> ProfileValidation.requiredError(surgery, "Surgery") == null &&
+            ProfileValidation.dateError(dischargeDate, "Discharge date") == null
+        2 -> true
         else -> ProfileValidation.requiredError(emergencyName, "Emergency contact name") == null &&
             ProfileValidation.phoneError(emergencyPhone, required = true) == null &&
-            ProfileValidation.phoneError(caregiverContact, required = false) == null
+            ProfileValidation.phoneError(doctorPhoneNumber, required = false) == null
     }
 
     LazyColumn(
@@ -117,10 +98,6 @@ fun OnboardingScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     when (step) {
                         0 -> {
-                            HealthTextField("First name", firstName, { firstName = it }, helperText = "At least 2 letters.", errorText = firstNameError)
-                            HealthTextField("Last name", lastName, { lastName = it }, helperText = "At least 2 letters.", errorText = lastNameError)
-                        }
-                        1 -> {
                             HealthDateField(
                                 label = "Date of birth",
                                 digits = dobDigits,
@@ -130,30 +107,27 @@ fun OnboardingScreen(
                             )
                             HealthSegmentedSelector(
                                 label = "Sex",
-                                options = listOf("Female", "Male", "Other"),
+                                options = listOf("Female", "Male", "Other", "Prefer not to say"),
                                 selected = sex,
                                 onSelected = { sex = it },
                                 helperText = "Choose the option that best fits.",
                                 errorText = sexError,
                             )
                         }
-                        2 -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                                HealthNumberField("Feet", feet, { feet = it }, Modifier.weight(1f), errorText = feetError)
-                                HealthNumberField("Inches", inches, { inches = it }, Modifier.weight(1f), errorText = inchesError)
-                            }
-                            HealthNumberField("Weight", weight, { weight = it }, helperText = "Pounds.", errorText = weightError)
-                        }
-                        3 -> {
-                            ChipInput(
-                                label = "Conditions",
-                                value = conditions,
-                                onValueChange = { conditions = it },
-                                helperText = "Optional. Separate with commas.",
-                                chips = ProfileValidation.splitList(conditions),
+                        1 -> {
+                            HealthTextField("Surgery", surgery, { surgery = it }, helperText = "Like appendectomy or knee repair.", errorText = surgeryError)
+                            HealthDateField(
+                                label = "Discharge date",
+                                digits = dischargeDigits,
+                                onDigitsChange = { dischargeDigits = it },
+                                helperText = "Use MM/DD/YYYY.",
+                                errorText = dischargeDateError,
                             )
+                            HealthTextField("Address", address, { address = it }, helperText = "Optional. Used for care coordination context.")
+                        }
+                        2 -> {
                             ChipInput(
-                                label = "Medications",
+                                label = "Current medications",
                                 value = medications,
                                 onValueChange = { medications = it },
                                 helperText = "Optional. Separate with commas.",
@@ -167,22 +141,10 @@ fun OnboardingScreen(
                                 chips = ProfileValidation.splitList(allergies),
                             )
                         }
-                        4 -> {
-                            HealthTextField("Surgery", surgery, { surgery = it }, helperText = "Optional, like appendectomy or knee repair.")
-                            HealthDateField(
-                                label = "Discharge date",
-                                digits = dischargeDigits,
-                                onDigitsChange = { dischargeDigits = it },
-                                helperText = "Optional. Use MM/DD/YYYY.",
-                                errorText = dischargeDateError,
-                            )
-                            HealthTextField("Address", address, { address = it }, helperText = "Optional. Used for caregiver and care coordination context.")
-                        }
                         else -> {
                             HealthTextField("Emergency contact name", emergencyName, { emergencyName = it }, errorText = emergencyNameError)
                             HealthTextField("Emergency contact phone", emergencyPhone, { emergencyPhone = it }, errorText = emergencyPhoneError, keyboardType = KeyboardType.Phone)
-                            HealthTextField("Caregiver name", caregiverName, { caregiverName = it }, helperText = "Optional.")
-                            HealthTextField("Caregiver contact", caregiverContact, { caregiverContact = it }, helperText = "Optional phone number.", errorText = caregiverContactError, keyboardType = KeyboardType.Phone)
+                            HealthTextField("Care team phone", doctorPhoneNumber, { doctorPhoneNumber = it }, helperText = "Optional phone number.", errorText = doctorPhoneError, keyboardType = KeyboardType.Phone)
                         }
                     }
                 }
@@ -196,24 +158,23 @@ fun OnboardingScreen(
                     if (step == steps.lastIndex) {
                         onComplete(
                             UserProfile(
-                                patientId = PatientIdGenerator.newUuid(),
-                                firstName = firstName.trim(),
-                                lastName = lastName.trim(),
+                                patientId = patientId,
+                                firstName = "Patient",
+                                lastName = "",
                                 dob = dob.trim(),
                                 sex = sex,
                                 address = address.trim().ifBlank { null },
-                                heightFeet = feet.toInt(),
-                                heightInches = inches.toInt(),
-                                weightPounds = weight.toInt(),
+                                heightFeet = 0,
+                                heightInches = 0,
+                                weightPounds = 0,
                                 surgery = surgery.trim().ifBlank { null },
                                 dischargeDate = dischargeDate.trim().ifBlank { null },
                                 emergencyContactName = emergencyName.trim(),
                                 emergencyContactPhone = emergencyPhone.trim(),
-                                caregiverName = caregiverName.trim().ifBlank { null },
-                                caregiverContact = caregiverContact.trim().ifBlank { null },
+                                doctorPhoneNumber = doctorPhoneNumber.trim().ifBlank { null },
                             ),
                             MedicalProfile(
-                                conditions = ProfileValidation.splitList(conditions),
+                                conditions = emptyList(),
                                 medications = ProfileValidation.splitList(medications),
                                 allergies = ProfileValidation.splitList(allergies),
                             ),

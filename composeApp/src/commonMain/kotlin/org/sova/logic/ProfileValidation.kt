@@ -31,6 +31,13 @@ object ProfileValidation {
         return null
     }
 
+    fun dateError(value: String, label: String): String? =
+        when {
+            value.isBlank() -> "$label is required."
+            parseDate(value) == null -> "Use a real $label date."
+            else -> null
+        }
+
     fun requiredError(value: String, label: String): String? =
         if (value.trim().isEmpty()) "$label is required." else null
 
@@ -58,6 +65,11 @@ object ProfileValidation {
 
     fun toIsoDate(value: String): String? =
         parseDate(value)?.toString()
+
+    fun toDisplayDate(value: String): String =
+        parseDate(value)?.let { date ->
+            "${(date.month.ordinal + 1).toString().padStart(2, '0')}/${date.day.toString().padStart(2, '0')}/${date.year}"
+        } ?: value
 
     fun ageFromDob(value: String): Int? {
         val dob = parseDate(value) ?: return null

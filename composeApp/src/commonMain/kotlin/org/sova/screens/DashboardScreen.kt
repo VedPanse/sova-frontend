@@ -193,8 +193,8 @@ private fun RecommendationCard(
 ) {
     val recommendation = recommendationCopy(result)
     val uriHandler = LocalUriHandler.current
-    val caregiverName = user.caregiverName?.ifBlank { null } ?: "your caregiver"
-    val caregiverContact = user.caregiverContact.orEmpty().filter { it.isDigit() || it == '+' }
+    val caregiverName = "your caregiver"
+    val caregiverContact = user.doctorPhoneNumber.orEmpty().filter { it.isDigit() || it == '+' }
 
     Column(
         modifier = modifier

@@ -29,24 +29,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import kotlinx.coroutines.delay
+import org.sova.components.AgentDeliberationPanel
 import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
-import org.sova.components.SecondaryButton
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.model.Agent
-import kotlinx.coroutines.delay
+import org.sova.model.AgentDeliberationMessage
 
 @Composable
 fun AgentsScreen(
     agents: List<Agent>,
+    deliberationMessages: List<AgentDeliberationMessage>,
     onConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -63,15 +66,24 @@ fun AgentsScreen(
 
     BoxWithConstraints(modifier = modifier) {
         if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
-            AgentsWide(onSpecialistSelected = { activeSpecialist = it }, modifier = Modifier.fillMaxWidth())
+            AgentsWide(
+                deliberationMessages = deliberationMessages,
+                onSpecialistSelected = { activeSpecialist = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
         } else {
-            AgentsCompact(onSpecialistSelected = { activeSpecialist = it }, modifier = Modifier.fillMaxWidth())
+            AgentsCompact(
+                deliberationMessages = deliberationMessages,
+                onSpecialistSelected = { activeSpecialist = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
 
 @Composable
 private fun AgentsCompact(
+    deliberationMessages: List<AgentDeliberationMessage>,
     onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -80,11 +92,13 @@ private fun AgentsCompact(
             AiCareHeader()
         }
         item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
+        item { AgentDeliberationPanel(messages = deliberationMessages) }
     }
 }
 
 @Composable
 private fun AgentsWide(
+    deliberationMessages: List<AgentDeliberationMessage>,
     onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -92,13 +106,17 @@ private fun AgentsWide(
         item { AiCareHeader() }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(0.85f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+                Column(modifier = Modifier.weight(0.42f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                     CareCouncilPanel(onSpecialistSelected = onSpecialistSelected)
                     JournalCard {
                         JournalLabel("Care model")
                         Text("Agents are reading live vitals, medication adherence, and recovery markers before proposing a single action.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
+                AgentDeliberationPanel(
+                    messages = deliberationMessages,
+                    modifier = Modifier.weight(0.58f),
+                )
             }
         }
     }
@@ -242,10 +260,73 @@ private fun ConnectedCallCard(
             Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
             JournalLabel("AI care specialist connected", color = HealthColors.Success)
             Text("Secure voice check-in in progress.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-            SecondaryButton(
-                text = if (muted) "Unmute" else "Mute",
-                onClick = onToggleMute,
+            MuteToggleButton(muted = muted, onClick = onToggleMute)
+            JournalLabel(if (muted) "Microphone muted" else "Microphone on", color = if (muted) HealthColors.Danger else HealthColors.Accent)
+        }
+    }
+}
+
+@Composable
+private fun MuteToggleButton(muted: Boolean, onClick: () -> Unit) {
+    val background = if (muted) HealthColors.Danger else HealthColors.SurfaceSubtle
+    val iconColor = if (muted) HealthColors.Surface else HealthColors.TextPrimary
+
+    Box(
+        modifier = Modifier
+            .size(HealthSpacing.Xl + HealthSpacing.Sm)
+            .clip(HealthShapes.Pill)
+            .background(background, HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(HealthSpacing.Lg)) {
+            val strokeWidth = HealthSpacing.Stroke.toPx() * 2.1f
+            val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            val micWidth = size.width * 0.28f
+            val micHeight = size.height * 0.46f
+            val micLeft = (size.width - micWidth) / 2f
+            val micTop = size.height * 0.14f
+
+            drawRoundRect(
+                color = iconColor,
+                topLeft = Offset(micLeft, micTop),
+                size = Size(micWidth, micHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(micWidth / 2f, micWidth / 2f),
+                style = stroke,
             )
+            drawArc(
+                color = iconColor,
+                startAngle = 0f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = Offset(size.width * 0.25f, size.height * 0.36f),
+                size = Size(size.width * 0.50f, size.height * 0.34f),
+                style = stroke,
+            )
+            drawLine(
+                color = iconColor,
+                start = Offset(size.width * 0.50f, size.height * 0.70f),
+                end = Offset(size.width * 0.50f, size.height * 0.84f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = iconColor,
+                start = Offset(size.width * 0.36f, size.height * 0.84f),
+                end = Offset(size.width * 0.64f, size.height * 0.84f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            if (muted) {
+                drawLine(
+                    color = iconColor,
+                    start = Offset(size.width * 0.22f, size.height * 0.20f),
+                    end = Offset(size.width * 0.78f, size.height * 0.82f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
         }
     }
 }
