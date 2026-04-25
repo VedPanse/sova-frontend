@@ -125,86 +125,80 @@ fun OnboardingScreen(
                     drawStopIndicator = {},
                 )
                 Text("Step ${step + 1} of ${steps.size}", color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+                OnboardingMascotStage(step = step)
             }
         }
         item {
             HealthCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                        when (step) {
-                            0 -> {
-                                HealthDateField(
-                                    label = "Date of birth",
-                                    digits = dobDigits,
-                                    onDigitsChange = { candidate ->
-                                        if (candidate.isCompleteFutureDate(::formatDateOfBirth, ProfileValidation::dobError)) {
-                                            dobFutureAttempted = true
-                                        } else {
-                                            dobFutureAttempted = false
-                                            dobDigits = candidate
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    when (step) {
+                        0 -> {
+                            HealthDateField(
+                                label = "Date of birth",
+                                digits = dobDigits,
+                                onDigitsChange = { candidate ->
+                                    if (candidate.isCompleteFutureDate(::formatDateOfBirth, ProfileValidation::dobError)) {
+                                        dobFutureAttempted = true
+                                    } else {
+                                        dobFutureAttempted = false
+                                        dobDigits = candidate
+                                    }
+                                },
+                                helperText = "Use MM/DD/YYYY.",
+                                errorText = dobError,
+                            )
+                            HealthSegmentedSelector(
+                                label = "Sex",
+                                options = listOf("Female", "Male", "Other", "Prefer not to say"),
+                                selected = sex,
+                                onSelected = { sex = it },
+                                helperText = "Choose the option that best fits.",
+                                errorText = sexError,
+                            )
+                        }
+                        1 -> {
+                            HealthTextField("Surgery", surgery, { surgery = it }, helperText = "Like appendectomy or knee repair.", errorText = surgeryError)
+                            HealthDateField(
+                                label = "Discharge date",
+                                digits = dischargeDigits,
+                                onDigitsChange = { candidate ->
+                                    if (candidate.isCompleteFutureDate(::formatDateOfBirth) { value ->
+                                            ProfileValidation.dateError(value, "Discharge date")
                                         }
-                                    },
-                                    helperText = "Use MM/DD/YYYY.",
-                                    errorText = dobError,
-                                )
-                                HealthSegmentedSelector(
-                                    label = "Sex",
-                                    options = listOf("Female", "Male", "Other", "Prefer not to say"),
-                                    selected = sex,
-                                    onSelected = { sex = it },
-                                    helperText = "Choose the option that best fits.",
-                                    errorText = sexError,
-                                )
-                            }
-                            1 -> {
-                                HealthTextField("Surgery", surgery, { surgery = it }, helperText = "Like appendectomy or knee repair.", errorText = surgeryError)
-                                HealthDateField(
-                                    label = "Discharge date",
-                                    digits = dischargeDigits,
-                                    onDigitsChange = { candidate ->
-                                        if (candidate.isCompleteFutureDate(::formatDateOfBirth) { value ->
-                                                ProfileValidation.dateError(value, "Discharge date")
-                                            }
-                                        ) {
-                                            dischargeFutureAttempted = true
-                                        } else {
-                                            dischargeFutureAttempted = false
-                                            dischargeDigits = candidate
-                                        }
-                                    },
-                                    helperText = "Use MM/DD/YYYY.",
-                                    errorText = dischargeDateError,
-                                )
-                                HealthTextField("Address", address, { address = it }, helperText = "Optional. Used for care coordination context.")
-                            }
-                            2 -> {
-                                ChipInput(
-                                    label = "Current medications",
-                                    value = medications,
-                                    onValueChange = { medications = it },
-                                    helperText = "Optional. Separate with commas.",
-                                    chips = ProfileValidation.splitList(medications),
-                                )
-                                ChipInput(
-                                    label = "Allergies",
-                                    value = allergies,
-                                    onValueChange = { allergies = it },
-                                    helperText = "Optional. Separate with commas.",
-                                    chips = ProfileValidation.splitList(allergies),
-                                )
-                            }
-                            else -> {
-                                HealthTextField("Emergency contact name", emergencyName, { emergencyName = it }, errorText = emergencyNameError)
-                                HealthTextField("Emergency contact phone", emergencyPhone, { emergencyPhone = it }, errorText = emergencyPhoneError, keyboardType = KeyboardType.Phone)
-                                HealthTextField("Care team phone", doctorPhoneNumber, { doctorPhoneNumber = it }, helperText = "Optional phone number.", errorText = doctorPhoneError, keyboardType = KeyboardType.Phone)
-                            }
+                                    ) {
+                                        dischargeFutureAttempted = true
+                                    } else {
+                                        dischargeFutureAttempted = false
+                                        dischargeDigits = candidate
+                                    }
+                                },
+                                helperText = "Use MM/DD/YYYY.",
+                                errorText = dischargeDateError,
+                            )
+                            HealthTextField("Address", address, { address = it }, helperText = "Optional. Used for care coordination context.")
+                        }
+                        2 -> {
+                            ChipInput(
+                                label = "Current medications",
+                                value = medications,
+                                onValueChange = { medications = it },
+                                helperText = "Optional. Separate with commas.",
+                                chips = ProfileValidation.splitList(medications),
+                            )
+                            ChipInput(
+                                label = "Allergies",
+                                value = allergies,
+                                onValueChange = { allergies = it },
+                                helperText = "Optional. Separate with commas.",
+                                chips = ProfileValidation.splitList(allergies),
+                            )
+                        }
+                        else -> {
+                            HealthTextField("Emergency contact name", emergencyName, { emergencyName = it }, errorText = emergencyNameError)
+                            HealthTextField("Emergency contact phone", emergencyPhone, { emergencyPhone = it }, errorText = emergencyPhoneError, keyboardType = KeyboardType.Phone)
+                            HealthTextField("Care team phone", doctorPhoneNumber, { doctorPhoneNumber = it }, helperText = "Optional phone number.", errorText = doctorPhoneError, keyboardType = KeyboardType.Phone)
                         }
                     }
-                    OnboardingMascot(step = step)
                 }
             }
         }
@@ -257,7 +251,7 @@ private data class WizardStep(
 )
 
 @Composable
-private fun OnboardingMascot(step: Int) {
+private fun OnboardingMascotStage(step: Int) {
     val transition = rememberInfiniteTransition(label = "sova-onboarding")
     val bob by transition.animateFloat(
         initialValue = -3f,
@@ -296,13 +290,15 @@ private fun OnboardingMascot(step: Int) {
     }
 
     Column(
-        modifier = Modifier.size(width = 92.dp, height = 156.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = HealthSpacing.Sm),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
     ) {
         Box(
             modifier = Modifier
-                .size(84.dp)
+                .size(230.dp)
                 .clip(HealthShapes.Pill)
                 .background(HealthColors.AccentSoft),
             contentAlignment = Alignment.BottomCenter,
@@ -312,15 +308,15 @@ private fun OnboardingMascot(step: Int) {
                     painter = painterResource(target.image),
                     contentDescription = "Sova mascot",
                     modifier = Modifier
-                        .size(78.dp)
-                        .offset(y = if (target.tucked) (16 - peek).dp else bob.dp)
+                        .size(210.dp)
+                        .offset(y = if (target.tucked) (42 - peek * 1.8f).dp else bob.dp)
                         .graphicsLayer {
-                            rotationZ = if (target.tucked) -2f else bob * 0.35f
+                            rotationZ = if (target.tucked) -3f else bob * 0.28f
                         },
                 )
             }
         }
-        Text(mood.message, color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelSmall)
+        Text(mood.message, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
