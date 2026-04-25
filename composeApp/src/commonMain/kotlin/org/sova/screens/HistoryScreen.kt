@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
+import org.sova.components.SovaMascotCompanion
+import org.sova.components.SovaMascotMood
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -69,6 +71,12 @@ fun HistoryScreen(
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
+        }
+        item {
+            SovaMascotCompanion(
+                message = "I saved the calm summaries here, so you can review them without digging.",
+                mood = SovaMascotMood.Calm,
+            )
         }
         item {
             Text("Recent Meetings", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
