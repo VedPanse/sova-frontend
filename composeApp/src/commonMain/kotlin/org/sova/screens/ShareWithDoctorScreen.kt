@@ -1,0 +1,86 @@
+package org.sova.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import org.sova.components.HealthCard
+import org.sova.components.InfoRow
+import org.sova.components.PrimaryButton
+import org.sova.components.SectionHeader
+import org.sova.design.HealthColors
+import org.sova.design.HealthSpacing
+import org.sova.model.MedicalProfile
+import org.sova.model.SimulationResult
+import org.sova.model.UserProfile
+import org.sova.model.Vitals
+
+@Composable
+fun ShareWithDoctorScreen(
+    user: UserProfile,
+    medical: MedicalProfile,
+    vitals: Vitals,
+    result: SimulationResult,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                Text("Medical summary", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
+                Text("A concise update for ${user.doctorName ?: "the doctor"}.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        item {
+            HealthCard {
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    SectionHeader("Patient")
+                    InfoRow("Name", user.fullName)
+                    InfoRow("Date of birth", user.dob)
+                    InfoRow("Sex", user.sex)
+                    InfoRow("Height", user.heightLabel)
+                    InfoRow("Weight", user.weightLabel)
+                }
+            }
+        }
+        item {
+            HealthCard {
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    SectionHeader("Medical details")
+                    InfoRow("Conditions", readableList(medical.conditions))
+                    InfoRow("Medications", readableList(medical.medications))
+                    InfoRow("Allergies", readableList(medical.allergies))
+                }
+            }
+        }
+        item {
+            HealthCard {
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    SectionHeader("Current state", result.summary)
+                    InfoRow("Heart rate", "${vitals.heartRate} bpm")
+                    InfoRow("HRV", "${vitals.hrv} ms")
+                    InfoRow("SpO2", "${vitals.spo2}%")
+                    InfoRow("Sleep", "${vitals.sleepHours} hours")
+                    InfoRow("Risk", result.riskLevel.name)
+                    InfoRow("Trajectory", result.trajectory.points.joinToString { "${it.label}: ${it.riskLevel.name}" })
+                    InfoRow("Recommendation", result.recommendation)
+                }
+            }
+        }
+        item {
+            HealthCard {
+                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    SectionHeader("Care contacts")
+                    InfoRow("Emergency", "${user.emergencyContactName}, ${user.emergencyContactPhone}")
+                    InfoRow("Doctor", user.doctorLabel)
+                }
+            }
+        }
+        item { PrimaryButton("Prepare summary", {}) }
+    }
+}
+
+private fun readableList(values: List<String>): String =
+    values.ifEmpty { listOf("None reported") }.joinToString()
