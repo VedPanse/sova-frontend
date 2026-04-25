@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,16 +17,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
+import org.sova.components.PrimaryButton
 import org.sova.components.RecoveryCurve
+import org.sova.components.SecondaryButton
 import org.sova.components.StabilityIndex
 import org.sova.components.VitalJournalCard
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
+import org.sova.model.RiskLevel
 import org.sova.model.SimulationResult
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
@@ -39,11 +50,36 @@ fun DashboardScreen(
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var activeSpecialist by remember { mutableStateOf<String?>(null) }
+
+    activeSpecialist?.let { specialist ->
+        SpecialistCallView(
+            specialist = specialist,
+            onBack = { activeSpecialist = null },
+            modifier = modifier.fillMaxWidth(),
+        )
+        return
+    }
+
     BoxWithConstraints(modifier = modifier) {
         if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
-            DashboardWide(user, vitals, result, modifier = Modifier.fillMaxWidth())
+            DashboardWide(
+                user = user,
+                vitals = vitals,
+                result = result,
+                onRunSimulation = onRunSimulation,
+                onRecommendedAction = onRecommendedAction,
+                onSpecialistSelected = { activeSpecialist = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
         } else {
-            DashboardCompact(user, vitals, result, modifier = Modifier.fillMaxWidth())
+            DashboardCompact(
+                user = user,
+                vitals = vitals,
+                result = result,
+                onSpecialistSelected = { activeSpecialist = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -53,6 +89,7 @@ private fun DashboardCompact(
     user: UserProfile,
     vitals: Vitals,
     result: SimulationResult,
+    onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
@@ -60,6 +97,7 @@ private fun DashboardCompact(
             StatusHeader(user)
         }
         item { CurrentVitalsCard(vitals) }
+        item { RecommendationCard(user, result, onSpecialistSelected) }
         item { LiveInsightsPanel() }
         item { TrajectoryCard() }
     }
@@ -70,30 +108,157 @@ private fun DashboardWide(
     user: UserProfile,
     vitals: Vitals,
     result: SimulationResult,
+    onRunSimulation: () -> Unit,
+    onRecommendedAction: () -> Unit,
+    onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1.0f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                    StatusHeader(user)
-                    CurrentVitalsCard(vitals)
-                }
-                Column(modifier = Modifier.weight(1.0f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                    TrajectoryCard()
-                }
-                Column(modifier = Modifier.weight(1.0f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                    LiveInsightsPanel()
-                    JournalCard {
-                        JournalLabel("Recommended action")
-                        Text(result.recommendation, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-                        Text("Continue passive monitoring. Escalate only if symptoms change or oxygen trends downward.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
+                DesktopStatusCard(
+                    user = user,
+                    result = result,
+                    onSpecialistSelected = onSpecialistSelected,
+                    modifier = Modifier.weight(1.35f),
+                )
+                TrajectoryCard(
+                    modifier = Modifier.weight(0.85f),
+                )
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
+                verticalAlignment = Alignment.Top,
+            ) {
+                CurrentVitalsCard(vitals, modifier = Modifier.weight(1.35f).fillMaxHeight())
+                LiveInsightsPanel(modifier = Modifier.weight(0.85f).fillMaxHeight())
             }
         }
     }
 }
+
+@Composable
+private fun DesktopStatusCard(
+    user: UserProfile,
+    result: SimulationResult,
+    onSpecialistSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = HealthColors.Surface,
+        shape = HealthShapes.Card,
+        border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
+        shadowElevation = HealthSpacing.None,
+    ) {
+        Column(
+            modifier = Modifier.padding(HealthSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                    JournalLabel("Current status")
+                    Text(
+                        "${user.firstName} shows remarkable recovery stability.",
+                        color = HealthColors.TextPrimary,
+                        style = MaterialTheme.typography.headlineLarge,
+                    )
+                    Text(
+                        "Monitoring the next 6 hours.",
+                        color = HealthColors.TextSecondary,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+                StabilityIndex(score = 94, modifier = Modifier.weight(0.45f))
+            }
+            RecommendationCard(user, result, onSpecialistSelected)
+        }
+    }
+}
+
+@Composable
+private fun RecommendationCard(
+    user: UserProfile,
+    result: SimulationResult,
+    onSpecialistSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val recommendation = recommendationCopy(result)
+    val uriHandler = LocalUriHandler.current
+    val caregiverName = user.caregiverName?.ifBlank { null } ?: "your caregiver"
+    val caregiverContact = user.caregiverContact.orEmpty().filter { it.isDigit() || it == '+' }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(recommendation.background, HealthShapes.SmallCard)
+            .padding(HealthSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
+    ) {
+        JournalLabel("Recommended action")
+        Text(recommendation.title, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+        Text(
+            recommendation.body,
+            color = HealthColors.TextSecondary,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        when (result.riskLevel) {
+            RiskLevel.Low -> Unit
+            RiskLevel.Moderate -> CareCouncilPanel(onSpecialistSelected = onSpecialistSelected)
+            RiskLevel.High -> Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                PrimaryButton(
+                    text = "Have Sova call $caregiverName",
+                    onClick = { onSpecialistSelected("Caregiver Outreach") },
+                    modifier = Modifier.weight(1f),
+                    enabled = caregiverContact.isNotBlank(),
+                )
+                SecondaryButton(
+                    text = "Call $caregiverName yourself",
+                    onClick = {
+                        if (caregiverContact.isNotBlank()) {
+                            uriHandler.openUri("tel:$caregiverContact")
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = caregiverContact.isNotBlank(),
+                )
+            }
+        }
+    }
+}
+
+private data class RecommendationCopy(
+    val title: String,
+    val body: String,
+    val background: androidx.compose.ui.graphics.Color,
+)
+
+private fun recommendationCopy(result: SimulationResult): RecommendationCopy =
+    when (result.riskLevel) {
+        RiskLevel.Low -> RecommendationCopy(
+            title = result.recommendation,
+            body = "Continue passive monitoring. Escalate only if symptoms change or oxygen trends downward.",
+            background = HealthColors.SurfaceSubtle,
+        )
+        RiskLevel.Moderate -> RecommendationCopy(
+            title = "Talk with an AI care specialist",
+            body = "Sova needs a little more context before it can stay passive. A short check-in can clarify symptoms, medication timing, and recovery comfort.",
+            background = HealthColors.AccentSoft,
+        )
+        RiskLevel.High -> RecommendationCopy(
+            title = "Call your caregiver",
+            body = "Risk is elevated. Contact your caregiver now, especially if symptoms are worsening or oxygen stays low.",
+            background = HealthColors.SurfaceSubtle,
+        )
+    }
 
 @Composable
 private fun StatusHeader(user: UserProfile) {
@@ -248,8 +413,8 @@ private fun TrajectoryCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun LiveInsightsPanel() {
-    JournalCard {
+private fun LiveInsightsPanel(modifier: Modifier = Modifier) {
+    JournalCard(modifier = modifier) {
         Text("Live Insights", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
         JournalLabel("Patient ID: SOVA-8821 // Real-time neural synthesis")
         SensorLine("Neural latency", "12ms", HealthColors.Accent)

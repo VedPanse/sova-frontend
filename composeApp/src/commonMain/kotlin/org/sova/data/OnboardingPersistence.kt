@@ -2,6 +2,7 @@ package org.sova.data
 
 import org.sova.model.MedicalProfile
 import org.sova.model.UserProfile
+import org.sova.logic.PatientIdGenerator
 
 expect object OnboardingStorage {
     fun read(): String?
@@ -21,18 +22,22 @@ object OnboardingPersistence {
 
     private fun encode(user: UserProfile, medical: MedicalProfile): String =
         listOf(
-            "2",
+            "3",
+            user.patientId,
             user.firstName,
             user.lastName,
             user.dob,
             user.sex,
+            user.address.orEmpty(),
             user.heightFeet.toString(),
             user.heightInches.toString(),
             user.weightPounds.toString(),
+            user.surgery.orEmpty(),
+            user.dischargeDate.orEmpty(),
             user.emergencyContactName,
             user.emergencyContactPhone,
-            user.doctorName.orEmpty(),
-            user.doctorContact.orEmpty(),
+            user.caregiverName.orEmpty(),
+            user.caregiverContact.orEmpty(),
             encodeList(medical.conditions),
             encodeList(medical.medications),
             encodeList(medical.allergies),
@@ -40,30 +45,63 @@ object OnboardingPersistence {
 
     private fun decode(value: String): PersistedOnboarding? {
         val parts = splitEscaped(value, '|').map(::unescape)
-        val offset = if (parts.firstOrNull() == "2") 1 else 0
-        if (parts.size - offset < 14) return null
+        val version = parts.firstOrNull()
+        val offset = if (version == "2" || version == "3") 1 else 0
+        if (version == "3" && parts.size - offset < 18) return null
+        if (version != "3" && parts.size - offset < 14) return null
 
         return runCatching {
-            PersistedOnboarding(
-                user = UserProfile(
-                    firstName = parts[offset],
-                    lastName = parts[offset + 1],
-                    dob = parts[offset + 2],
-                    sex = parts[offset + 3],
-                    heightFeet = parts[offset + 4].toInt(),
-                    heightInches = parts[offset + 5].toInt(),
-                    weightPounds = parts[offset + 6].toInt(),
-                    emergencyContactName = parts[offset + 7],
-                    emergencyContactPhone = parts[offset + 8],
-                    doctorName = parts[offset + 9].ifBlank { null },
-                    doctorContact = parts[offset + 10].ifBlank { null },
-                ),
-                medical = MedicalProfile(
-                    conditions = decodeList(parts[offset + 11]),
-                    medications = decodeList(parts[offset + 12]),
-                    allergies = decodeList(parts[offset + 13]),
-                ),
-            )
+            if (version == "3") {
+                PersistedOnboarding(
+                    user = UserProfile(
+                        patientId = parts[offset],
+                        firstName = parts[offset + 1],
+                        lastName = parts[offset + 2],
+                        dob = parts[offset + 3],
+                        sex = parts[offset + 4],
+                        address = parts[offset + 5].ifBlank { null },
+                        heightFeet = parts[offset + 6].toInt(),
+                        heightInches = parts[offset + 7].toInt(),
+                        weightPounds = parts[offset + 8].toInt(),
+                        surgery = parts[offset + 9].ifBlank { null },
+                        dischargeDate = parts[offset + 10].ifBlank { null },
+                        emergencyContactName = parts[offset + 11],
+                        emergencyContactPhone = parts[offset + 12],
+                        caregiverName = parts[offset + 13].ifBlank { null },
+                        caregiverContact = parts[offset + 14].ifBlank { null },
+                    ),
+                    medical = MedicalProfile(
+                        conditions = decodeList(parts[offset + 15]),
+                        medications = decodeList(parts[offset + 16]),
+                        allergies = decodeList(parts[offset + 17]),
+                    ),
+                )
+            } else {
+                PersistedOnboarding(
+                    user = UserProfile(
+                        patientId = PatientIdGenerator.newUuid(),
+                        firstName = parts[offset],
+                        lastName = parts[offset + 1],
+                        dob = parts[offset + 2],
+                        sex = parts[offset + 3],
+                        address = null,
+                        heightFeet = parts[offset + 4].toInt(),
+                        heightInches = parts[offset + 5].toInt(),
+                        weightPounds = parts[offset + 6].toInt(),
+                        surgery = null,
+                        dischargeDate = null,
+                        emergencyContactName = parts[offset + 7],
+                        emergencyContactPhone = parts[offset + 8],
+                        caregiverName = parts[offset + 9].ifBlank { null },
+                        caregiverContact = parts[offset + 10].ifBlank { null },
+                    ),
+                    medical = MedicalProfile(
+                        conditions = decodeList(parts[offset + 11]),
+                        medications = decodeList(parts[offset + 12]),
+                        allergies = decodeList(parts[offset + 13]),
+                    ),
+                )
+            }
         }.getOrNull()
     }
 

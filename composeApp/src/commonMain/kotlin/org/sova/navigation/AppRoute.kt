@@ -8,5 +8,5 @@ enum class AppRoute(val label: String) {
     Simulation("Simulation"),
     Conversation("Conversation"),
     RecommendedAction("Action"),
-    ShareWithDoctor("Share"),
+    ShareWithCaregiver("Share"),
 }

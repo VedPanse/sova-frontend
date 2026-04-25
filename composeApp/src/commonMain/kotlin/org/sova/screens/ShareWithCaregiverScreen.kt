@@ -13,13 +13,14 @@ import org.sova.components.PrimaryButton
 import org.sova.components.SectionHeader
 import org.sova.design.HealthColors
 import org.sova.design.HealthSpacing
+import org.sova.logic.ProfileValidation
 import org.sova.model.MedicalProfile
 import org.sova.model.SimulationResult
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
 
 @Composable
-fun ShareWithDoctorScreen(
+fun ShareWithCaregiverScreen(
     user: UserProfile,
     medical: MedicalProfile,
     vitals: Vitals,
@@ -29,17 +30,20 @@ fun ShareWithDoctorScreen(
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                Text("Medical summary", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
-                Text("A concise update for ${user.doctorName ?: "the doctor"}.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                Text("Care summary", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
+                Text("A concise update for ${user.caregiverName ?: "the caregiver"}.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             }
         }
         item {
             HealthCard {
                 Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     SectionHeader("Patient")
+                    InfoRow("Patient ID", user.patientId)
                     InfoRow("Name", user.fullName)
+                    InfoRow("Age", ProfileValidation.ageFromDob(user.dob)?.toString() ?: "Not available")
                     InfoRow("Date of birth", user.dob)
                     InfoRow("Sex", user.sex)
+                    InfoRow("Address", user.address?.takeIf { it.isNotBlank() } ?: "Not provided")
                     InfoRow("Height", user.heightLabel)
                     InfoRow("Weight", user.weightLabel)
                 }
@@ -52,6 +56,8 @@ fun ShareWithDoctorScreen(
                     InfoRow("Conditions", readableList(medical.conditions))
                     InfoRow("Medications", readableList(medical.medications))
                     InfoRow("Allergies", readableList(medical.allergies))
+                    InfoRow("Surgery", user.surgery?.takeIf { it.isNotBlank() } ?: "Not provided")
+                    InfoRow("Discharge date", user.dischargeDate?.takeIf { it.isNotBlank() } ?: "Not provided")
                 }
             }
         }
@@ -74,7 +80,7 @@ fun ShareWithDoctorScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                     SectionHeader("Care contacts")
                     InfoRow("Emergency", "${user.emergencyContactName}, ${user.emergencyContactPhone}")
-                    InfoRow("Doctor", user.doctorLabel)
+                    InfoRow("Caregiver", user.caregiverLabel)
                 }
             }
         }

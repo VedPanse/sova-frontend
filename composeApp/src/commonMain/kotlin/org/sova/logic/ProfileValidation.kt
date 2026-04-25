@@ -25,6 +25,12 @@ object ProfileValidation {
         return if (date > today) "Date of birth cannot be in the future." else null
     }
 
+    fun optionalDateError(value: String, label: String): String? {
+        if (value.isBlank()) return null
+        parseDate(value) ?: return "Use a real $label date."
+        return null
+    }
+
     fun requiredError(value: String, label: String): String? =
         if (value.trim().isEmpty()) "$label is required." else null
 
@@ -49,6 +55,19 @@ object ProfileValidation {
         value.split(",")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+
+    fun toIsoDate(value: String): String? =
+        parseDate(value)?.toString()
+
+    fun ageFromDob(value: String): Int? {
+        val dob = parseDate(value) ?: return null
+        val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+        var age = today.year - dob.year
+        if (today.month < dob.month || (today.month == dob.month && today.day < dob.day)) {
+            age -= 1
+        }
+        return age.coerceAtLeast(0)
+    }
 
     private fun parseDate(value: String): LocalDate? {
         val trimmed = value.trim()

@@ -188,8 +188,8 @@ private fun historyWithTranscripts(history: List<HistoryItem>): List<HistoryItem
             time = "Yesterday, 6:18 PM",
         ),
         HistoryItem(
-            title = "Doctor Summary Transcript",
-            summary = "Sova generated a concise provider-ready summary covering vitals, medication adherence, and low short-term risk.",
+            title = "Caregiver Summary Transcript",
+            summary = "Sova generated a concise caregiver-ready summary covering vitals, medication adherence, and low short-term risk.",
             time = "Sep 22, 9:20 AM",
         ),
     )
@@ -211,11 +211,11 @@ private data class TranscriptMessage(
 
 private fun transcriptFor(item: HistoryItem): List<TranscriptMessage> =
     when {
-        item.title.contains("Doctor", ignoreCase = true) -> listOf(
-            TranscriptMessage("Clinician", "I reviewed your vitals and the Sova summary. Heart rate, oxygen, and medication adherence look stable."),
+        item.title.contains("Caregiver", ignoreCase = true) -> listOf(
+            TranscriptMessage("Caregiver", "I reviewed your vitals and the Sova summary. Heart rate, oxygen, and medication adherence look stable."),
             TranscriptMessage("Patient", "I felt a little tired this morning, but breathing has been comfortable."),
-            TranscriptMessage("Clinician", "That matches the trend. Continue hydration, normal meals, and light movement as tolerated."),
-            TranscriptMessage("Clinician", "Escalate if oxygen drops, chest discomfort appears, or fatigue becomes sudden or severe."),
+            TranscriptMessage("Caregiver", "That matches the trend. Continue hydration, normal meals, and light movement as tolerated."),
+            TranscriptMessage("Caregiver", "Escalate if oxygen drops, chest discomfort appears, or fatigue becomes sudden or severe."),
         )
         item.title.contains("Transcript", ignoreCase = true) -> listOf(
             TranscriptMessage("Sova AI", "I’m checking your recovery signals now. Heart rate is steady and oxygen is holding at 98%."),

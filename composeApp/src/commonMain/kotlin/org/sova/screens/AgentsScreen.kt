@@ -37,6 +37,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
+import org.sova.components.SecondaryButton
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -104,12 +105,13 @@ private fun AgentsWide(
 }
 
 @Composable
-private fun SpecialistCallView(
+fun SpecialistCallView(
     specialist: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var connected by remember(specialist) { mutableStateOf(false) }
+    var muted by remember(specialist) { mutableStateOf(false) }
     LaunchedEffect(specialist) {
         delay(3000)
         connected = true
@@ -124,12 +126,21 @@ private fun SpecialistCallView(
                 if (connected) {
                     if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
                         Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                            ConnectedCallCard(specialist, Modifier.weight(0.80f))
+                            ConnectedCallCard(
+                                specialist = specialist,
+                                muted = muted,
+                                onToggleMute = { muted = !muted },
+                                modifier = Modifier.weight(0.80f),
+                            )
                             LiveCaptionCard(specialist, Modifier.weight(0.20f))
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                            ConnectedCallCard(specialist)
+                            ConnectedCallCard(
+                                specialist = specialist,
+                                muted = muted,
+                                onToggleMute = { muted = !muted },
+                            )
                             LiveCaptionCard(specialist)
                         }
                     }
@@ -172,7 +183,7 @@ private fun CircularBackButton(onClick: () -> Unit) {
 
 @Composable
 private fun ConnectingCallCard(specialist: String, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "doctor-call-pulse")
+    val transition = rememberInfiniteTransition(label = "specialist-call-pulse")
     val pulse by transition.animateFloat(
         initialValue = 0.86f,
         targetValue = 1.22f,
@@ -204,17 +215,22 @@ private fun ConnectingCallCard(specialist: String, modifier: Modifier = Modifier
                         }
                         .background(HealthColors.AccentSoft, HealthShapes.Pill),
                 )
-                DoctorAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Md)
+                SpecialistAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Md)
             }
             Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
             JournalLabel("Ringing secure line", color = HealthColors.Accent)
-            Text("Waiting for the AI doctor to join.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            Text("Waiting for the AI care specialist to join.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
 
 @Composable
-private fun ConnectedCallCard(specialist: String, modifier: Modifier = Modifier) {
+private fun ConnectedCallCard(
+    specialist: String,
+    muted: Boolean,
+    onToggleMute: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     JournalCard(modifier = modifier) {
         JournalLabel("Connected")
         Column(
@@ -222,16 +238,20 @@ private fun ConnectedCallCard(specialist: String, modifier: Modifier = Modifier)
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
         ) {
-            DoctorAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Lg)
+            SpecialistAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Lg)
             Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-            JournalLabel("AI doctor connected", color = HealthColors.Success)
+            JournalLabel("AI care specialist connected", color = HealthColors.Success)
             Text("Secure voice check-in in progress.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            SecondaryButton(
+                text = if (muted) "Unmute" else "Mute",
+                onClick = onToggleMute,
+            )
         }
     }
 }
 
 @Composable
-private fun DoctorAvatar(specialist: String, size: androidx.compose.ui.unit.Dp) {
+private fun SpecialistAvatar(specialist: String, size: androidx.compose.ui.unit.Dp) {
     Box(
         modifier = Modifier
             .size(size)
@@ -247,7 +267,7 @@ private fun WaitingCaptionCard(modifier: Modifier = Modifier) {
     JournalCard(modifier = modifier) {
         JournalLabel("Live captions")
         Text("Connecting...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-        Text("Captions will appear here when the AI doctor joins.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        Text("Captions will appear here when the AI care specialist joins.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -271,6 +291,12 @@ private fun String.initials(): String =
 
 private fun liveCaptionsFor(specialist: String): List<String> =
     when {
+        specialist.contains("Caregiver Outreach") -> listOf(
+            "Sova: I’m preparing a concise caregiver handoff with current vitals and risk context.",
+            "Sova: Oxygen is low and medication was missed. This needs human follow-up.",
+            "Sova: Calling the saved caregiver contact now.",
+            "Sova: I’ll keep the summary focused on what changed and what action is needed.",
+        )
         specialist.contains("Cardio") -> listOf(
             "$specialist: I’m reviewing your heart rate and rhythm trends now.",
             "Patient: I don’t feel chest pain. My breathing feels normal.",

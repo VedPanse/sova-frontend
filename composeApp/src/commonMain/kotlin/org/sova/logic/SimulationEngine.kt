@@ -47,7 +47,7 @@ object SimulationEngine {
         val recommendation = when (risk) {
             RiskLevel.Low -> "Continue monitoring"
             RiskLevel.Moderate -> "Rest and recheck in 2 hours"
-            RiskLevel.High -> "Contact your doctor"
+            RiskLevel.High -> "Contact your caregiver"
         }
 
         return SimulationResult(

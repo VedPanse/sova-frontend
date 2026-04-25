@@ -144,9 +144,9 @@ private data class CouncilAgent(
 )
 
 private val councilAgents = listOf(
-    CouncilAgent("GP", "Dr. General", "Primary care - synthesizes the whole picture", HealthColors.SurfaceSubtle),
-    CouncilAgent("CD", "Dr. Cardio", "Heart rhythm and cardiac risk", HealthColors.AccentSoft),
-    CouncilAgent("PH", "Dr. Pharma", "Medication timing and interactions", HealthColors.Success.copy(alpha = 0.35f)),
+    CouncilAgent("GP", "General Care", "Primary care - synthesizes the whole picture", HealthColors.SurfaceSubtle),
+    CouncilAgent("CD", "Cardio Care", "Heart rhythm and cardiac risk", HealthColors.AccentSoft),
+    CouncilAgent("PH", "Pharma Care", "Medication timing and interactions", HealthColors.Success.copy(alpha = 0.35f)),
     CouncilAgent("BH", "Behavioral Health", "Sleep, stress, and daily barriers", HealthColors.MutedBlue.copy(alpha = 0.30f)),
     CouncilAgent("PA", "Patient Advocate", "Preference, comfort, and quality of life", HealthColors.Warning.copy(alpha = 0.35f)),
 )

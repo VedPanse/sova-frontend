@@ -38,7 +38,6 @@ import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
 import org.sova.components.PrimaryButton
 import org.sova.components.SecondaryButton
-import org.sova.components.SmallCapsPill
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
@@ -74,7 +73,7 @@ private enum class ProfileEditSection {
     Body,
     Medical,
     Emergency,
-    Doctor,
+    Caregiver,
 }
 
 @Composable
@@ -91,23 +90,6 @@ private fun ProfileSummaryScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
                 Text(user.fullName, color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge.copy(fontStyle = FontStyle.Italic))
-                Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                    SmallCapsPill("Active recovery")
-                    SmallCapsPill(user.sex, HealthColors.SurfaceSubtle)
-                }
-            }
-        }
-        item {
-            JournalCard {
-                Text("Clinical Interpretation", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-                Text(
-                    "\"Recovery metrics indicate steady progress. Current medical context and recent signals support continued passive monitoring.\"",
-                    color = HealthColors.Ink,
-                    style = MaterialTheme.typography.titleLarge.copy(fontStyle = FontStyle.Italic),
-                )
-                InterpretationRow("01", "Resting heart rate remains stable within target window.")
-                InterpretationRow("02", "Patient profile lists ${user.heightLabel} and ${user.weightLabel}.")
-                InterpretationRow("03", "Medication and allergy context is ready for care review.")
             }
         }
         item {
@@ -116,8 +98,10 @@ private fun ProfileSummaryScreen(
                     BasicInformationEditor(user, medical, onCancel, onSave)
                 } else {
                     EditableSectionHeader("Basic information") { onEdit(ProfileEditSection.Basic) }
+                    InfoRow("Patient ID", user.patientId)
                     InfoRow("Date of birth", user.dob)
                     InfoRow("Sex", user.sex)
+                    InfoRow("Address", user.address?.takeIf { it.isNotBlank() } ?: "Not provided")
                 }
             }
         }
@@ -141,6 +125,8 @@ private fun ProfileSummaryScreen(
                     InfoRow("Conditions", readableList(medical.conditions))
                     InfoRow("Medications", readableList(medical.medications))
                     InfoRow("Allergies", readableList(medical.allergies))
+                    InfoRow("Surgery", user.surgery?.takeIf { it.isNotBlank() } ?: "Not provided")
+                    InfoRow("Discharge date", user.dischargeDate?.takeIf { it.isNotBlank() } ?: "Not provided")
                 }
             }
         }
@@ -157,12 +143,12 @@ private fun ProfileSummaryScreen(
         }
         item {
             JournalCard {
-                if (editingSection == ProfileEditSection.Doctor) {
-                    DoctorInformationEditor(user, medical, onCancel, onSave)
+                if (editingSection == ProfileEditSection.Caregiver) {
+                    CaregiverInformationEditor(user, medical, onCancel, onSave)
                 } else {
-                    EditableSectionHeader("Doctor information") { onEdit(ProfileEditSection.Doctor) }
-                    InfoRow("Doctor", user.doctorName?.takeIf { it.isNotBlank() } ?: "Not provided")
-                    InfoRow("Contact", user.doctorContact?.takeIf { it.isNotBlank() } ?: "Not provided")
+                    EditableSectionHeader("Caregiver information") { onEdit(ProfileEditSection.Caregiver) }
+                    InfoRow("Caregiver", user.caregiverName?.takeIf { it.isNotBlank() } ?: "Not provided")
+                    InfoRow("Contact", user.caregiverContact?.takeIf { it.isNotBlank() } ?: "Not provided")
                 }
             }
         }
@@ -229,6 +215,7 @@ private fun BasicInformationEditor(
     var lastName by remember(user) { mutableStateOf(user.lastName) }
     var dobDigits by remember(user) { mutableStateOf(user.dob.filter { it.isDigit() }.take(8)) }
     var sex by remember(user) { mutableStateOf(user.sex) }
+    var address by remember(user) { mutableStateOf(user.address.orEmpty()) }
     val dob = formatDateOfBirth(dobDigits)
     val firstNameError = ProfileValidation.nameError(firstName, "First name")
     val lastNameError = ProfileValidation.nameError(lastName, "Last name")
@@ -241,6 +228,7 @@ private fun BasicInformationEditor(
     HealthTextField("Last name", lastName, { lastName = it }, errorText = lastNameError)
     HealthDateField("Date of birth", dobDigits, { dobDigits = it }, helperText = "MM/DD/YYYY", errorText = dobError)
     HealthSegmentedSelector("Sex", listOf("Female", "Male", "Other"), sex, { sex = it }, errorText = sexError)
+    HealthTextField("Address", address, { address = it }, helperText = "Optional")
     SectionEditActions(
         canSave = canSave,
         onCancel = onCancel,
@@ -251,6 +239,7 @@ private fun BasicInformationEditor(
                     lastName = lastName.trim(),
                     dob = dob,
                     sex = sex,
+                    address = address.trim().takeIf { it.isNotBlank() },
                 ),
                 medical,
             )
@@ -305,17 +294,26 @@ private fun MedicalInformationEditor(
     var conditions by remember(medical) { mutableStateOf(medical.conditions.joinToString(", ")) }
     var medications by remember(medical) { mutableStateOf(medical.medications.joinToString(", ")) }
     var allergies by remember(medical) { mutableStateOf(medical.allergies.joinToString(", ")) }
+    var surgery by remember(user) { mutableStateOf(user.surgery.orEmpty()) }
+    var dischargeDigits by remember(user) { mutableStateOf(user.dischargeDate.orEmpty().filter { it.isDigit() }.take(8)) }
+    val dischargeDate = formatDateOfBirth(dischargeDigits)
+    val dischargeDateError = ProfileValidation.optionalDateError(dischargeDate, "discharge")
 
     JournalLabel("Medical information")
     ChipInput("Conditions", conditions, { conditions = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(conditions))
     ChipInput("Medications", medications, { medications = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(medications))
     ChipInput("Allergies", allergies, { allergies = it }, helperText = "Separate items with commas.", chips = ProfileValidation.splitList(allergies))
+    HealthTextField("Surgery", surgery, { surgery = it }, helperText = "Optional")
+    HealthDateField("Discharge date", dischargeDigits, { dischargeDigits = it }, helperText = "Optional. MM/DD/YYYY", errorText = dischargeDateError)
     SectionEditActions(
-        canSave = true,
+        canSave = dischargeDateError == null,
         onCancel = onCancel,
         onSave = {
             onSave(
-                user,
+                user.copy(
+                    surgery = surgery.trim().takeIf { it.isNotBlank() },
+                    dischargeDate = dischargeDate.trim().takeIf { it.isNotBlank() },
+                ),
                 medical.copy(
                     conditions = ProfileValidation.splitList(conditions),
                     medications = ProfileValidation.splitList(medications),
@@ -358,28 +356,28 @@ private fun EmergencyContactEditor(
 }
 
 @Composable
-private fun DoctorInformationEditor(
+private fun CaregiverInformationEditor(
     user: UserProfile,
     medical: MedicalProfile,
     onCancel: () -> Unit,
     onSave: (UserProfile, MedicalProfile) -> Unit,
 ) {
-    var doctorName by remember(user) { mutableStateOf(user.doctorName.orEmpty()) }
-    var doctorContact by remember(user) { mutableStateOf(user.doctorContact.orEmpty()) }
-    val doctorContactError = ProfileValidation.phoneError(doctorContact, required = false)
-    val canSave = doctorContactError == null
+    var caregiverName by remember(user) { mutableStateOf(user.caregiverName.orEmpty()) }
+    var caregiverContact by remember(user) { mutableStateOf(user.caregiverContact.orEmpty()) }
+    val caregiverContactError = ProfileValidation.phoneError(caregiverContact, required = false)
+    val canSave = caregiverContactError == null
 
-    JournalLabel("Doctor information")
-    HealthTextField("Doctor name", doctorName, { doctorName = it }, helperText = "Optional")
-    HealthTextField("Doctor contact", doctorContact, { doctorContact = it }, helperText = "Optional", errorText = doctorContactError)
+    JournalLabel("Caregiver information")
+    HealthTextField("Caregiver name", caregiverName, { caregiverName = it }, helperText = "Optional")
+    HealthTextField("Caregiver contact", caregiverContact, { caregiverContact = it }, helperText = "Optional", errorText = caregiverContactError)
     SectionEditActions(
         canSave = canSave,
         onCancel = onCancel,
         onSave = {
             onSave(
                 user.copy(
-                    doctorName = doctorName.trim().takeIf { it.isNotBlank() },
-                    doctorContact = doctorContact.trim().takeIf { it.isNotBlank() },
+                    caregiverName = caregiverName.trim().takeIf { it.isNotBlank() },
+                    caregiverContact = caregiverContact.trim().takeIf { it.isNotBlank() },
                 ),
                 medical,
             )
@@ -396,14 +394,6 @@ private fun SectionEditActions(
     Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
         SecondaryButton("Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
         PrimaryButton("Save", onClick = onSave, modifier = Modifier.weight(1f), enabled = canSave)
-    }
-}
-
-@Composable
-private fun InterpretationRow(number: String, text: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-        Text(number, color = HealthColors.Success, style = MaterialTheme.typography.bodyLarge)
-        Text(text, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
     }
 }
 

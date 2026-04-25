@@ -46,7 +46,7 @@ import org.sova.screens.HistoryScreen
 import org.sova.screens.OnboardingScreen
 import org.sova.screens.ProfileScreen
 import org.sova.screens.RecommendedActionScreen
-import org.sova.screens.ShareWithDoctorScreen
+import org.sova.screens.ShareWithCaregiverScreen
 import org.sova.screens.SimulationScreen
 
 @Composable
@@ -158,7 +158,7 @@ private fun RouteContent(
             result = data.simulation,
             onRunSimulation = onRunSimulation,
             onRecommendedAction = { onRoute(AppRoute.RecommendedAction) },
-            onShare = { onRoute(AppRoute.ShareWithDoctor) },
+            onShare = { onRoute(AppRoute.ShareWithCaregiver) },
             modifier = Modifier.fillMaxSize(),
         )
         AppRoute.Agents -> AgentsScreen(
@@ -171,7 +171,7 @@ private fun RouteContent(
         AppRoute.Simulation -> SimulationScreen(user, simulationRun, data.simulation, onRunSimulation, Modifier.fillMaxSize())
         AppRoute.Conversation -> AgentConversationScreen(data.conversation, data.simulation.recommendation, Modifier.fillMaxSize())
         AppRoute.RecommendedAction -> RecommendedActionScreen(data.simulation.recommendation, Modifier.fillMaxSize())
-        AppRoute.ShareWithDoctor -> ShareWithDoctorScreen(user, medical, data.vitals, data.simulation, Modifier.fillMaxSize())
+        AppRoute.ShareWithCaregiver -> ShareWithCaregiverScreen(user, medical, data.vitals, data.simulation, Modifier.fillMaxSize())
     }
 }
 
