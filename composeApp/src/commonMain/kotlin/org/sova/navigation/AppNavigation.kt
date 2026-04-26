@@ -1,13 +1,6 @@
 package org.sova.navigation
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,15 +8,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,32 +32,30 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.painterResource
 import org.sova.data.AgentDeliberationApi
 import org.sova.data.AgentDeliberationEvent
 import org.sova.data.DisplayContent
+import org.sova.data.LiveMonitoringApi
+import org.sova.data.LiveMonitoringStatusPayload
 import org.sova.data.PatientProfileApi
 import org.sova.data.PatientProfilePersistence
-import org.sova.data.VitalsApi
+import org.sova.data.fallbackMonitoringResult
 import org.sova.data.toAgentDeliberationStartRequest
 import org.sova.data.toPatientProfilePayload
 import org.sova.components.JournalTopBar
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
-import org.sova.logic.SimulationEngine
 import org.sova.model.AgentDeliberationDecision
 import org.sova.model.AgentDeliberationMessage
 import org.sova.model.AgentDeliberationState
 import org.sova.model.MedicalProfile
-import org.sova.model.RiskLevel
 import org.sova.model.SimulationResult
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
@@ -79,10 +68,6 @@ import org.sova.screens.ProfileScreen
 import org.sova.screens.RecommendedActionScreen
 import org.sova.screens.ShareWithCaregiverScreen
 import org.sova.screens.SimulationScreen
-import sova.composeapp.generated.resources.Res
-import sova.composeapp.generated.resources.sova_mascot
-import sova.composeapp.generated.resources.sova_mascot_eyes_closed
-import sova.composeapp.generated.resources.sova_mascot_smiling
 
 @Composable
 fun AppNavigation() {
@@ -95,9 +80,11 @@ fun AppNavigation() {
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var medicalProfile by remember { mutableStateOf<MedicalProfile?>(null) }
     var vitals by remember { mutableStateOf(Vitals()) }
+    var monitoringStatus by remember { mutableStateOf<LiveMonitoringStatusPayload?>(null) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
     var deliberationState by remember { mutableStateOf<AgentDeliberationState>(AgentDeliberationState.Idle) }
     var deliberationRefreshKey by remember { mutableStateOf(0) }
+    var observedDeliberationKey by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(patientId) {
         val draft = PatientProfilePersistence.loadDraft()
@@ -123,19 +110,45 @@ fun AppNavigation() {
                 onboarded = true
             }
         }
-        val latestVitals = VitalsApi.latest(patientId)
-        if (latestVitals == null) {
-            println("Sova vitals: no database values available for patientId=$patientId.")
-        } else {
-            vitals = latestVitals.toVitals()
-        }
         loaded = true
     }
 
-    LaunchedEffect(loaded, onboarded, userProfile?.patientId, deliberationRefreshKey) {
+    LaunchedEffect(loaded, onboarded, userProfile?.patientId) {
+        val livePatientId = userProfile?.patientId ?: patientId
+        if (!loaded || !onboarded) return@LaunchedEffect
+        while (true) {
+            val status = LiveMonitoringApi.status(livePatientId)
+            if (status == null) {
+                println("Sova live monitoring: keeping last known vitals for patientId=$livePatientId.")
+            } else {
+                monitoringStatus = status
+                vitals = status.vitals.toVitals()
+            }
+            delay(5_000)
+        }
+    }
+
+    LaunchedEffect(
+        loaded,
+        onboarded,
+        userProfile?.patientId,
+        monitoringStatus?.deliberation?.triggered,
+        monitoringStatus?.deliberation?.streamUrl,
+        deliberationRefreshKey,
+    ) {
         val user = userProfile ?: return@LaunchedEffect
         val medical = medicalProfile ?: MedicalProfile(emptyList(), emptyList(), emptyList())
         if (!loaded || !onboarded) return@LaunchedEffect
+        val backendDeliberation = monitoringStatus?.deliberation
+        val manualRefresh = deliberationRefreshKey > 0
+        val streamKey = when {
+            manualRefresh -> "${user.patientId}:manual:$deliberationRefreshKey"
+            backendDeliberation?.triggered == true && !backendDeliberation.streamUrl.isNullOrBlank() ->
+                "${user.patientId}:${backendDeliberation.streamUrl}"
+            else -> null
+        } ?: return@LaunchedEffect
+        if (observedDeliberationKey == streamKey) return@LaunchedEffect
+        observedDeliberationKey = streamKey
 
         deliberationState = AgentDeliberationState.Starting
         val messages = mutableListOf<AgentDeliberationMessage>()
@@ -144,10 +157,12 @@ fun AppNavigation() {
         var activeAgent: String? = null
 
         runCatching {
-            val request = user.toAgentDeliberationStartRequest(medical, vitals)
-            AgentDeliberationApi.start(request)
+            if (manualRefresh) {
+                val request = user.toAgentDeliberationStartRequest(medical, vitals)
+                AgentDeliberationApi.start(request)
+            }
             deliberationState = AgentDeliberationState.Streaming(messages = emptyList())
-            AgentDeliberationApi.observe(request.patientId).collect { event ->
+            AgentDeliberationApi.observe(user.patientId).collect { event ->
                 when (event) {
                     is AgentDeliberationEvent.Started -> {
                         deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
@@ -237,6 +252,7 @@ fun AppNavigation() {
                         userProfile = userProfile,
                         medicalProfile = medicalProfile,
                         vitals = vitals,
+                        monitoringStatus = monitoringStatus,
                         route = route,
                         simulationRun = simulationRun,
                         deliberationState = deliberationState,
@@ -272,6 +288,7 @@ fun AppNavigation() {
                         userProfile = userProfile,
                         medicalProfile = medicalProfile,
                         vitals = vitals,
+                        monitoringStatus = monitoringStatus,
                         route = route,
                         simulationRun = simulationRun,
                         deliberationState = deliberationState,
@@ -309,6 +326,7 @@ private fun RouteContent(
     userProfile: UserProfile?,
     medicalProfile: MedicalProfile?,
     vitals: Vitals,
+    monitoringStatus: LiveMonitoringStatusPayload?,
     route: AppRoute,
     simulationRun: Boolean,
     deliberationState: AgentDeliberationState,
@@ -319,180 +337,39 @@ private fun RouteContent(
 ) {
     val user = userProfile
     val medical = medicalProfile ?: MedicalProfile(emptyList(), emptyList(), emptyList())
-    val simulation: SimulationResult = SimulationEngine.run(vitals)
+    val simulation: SimulationResult = monitoringStatus?.toSimulationResult() ?: fallbackMonitoringResult()
     if (user == null) {
         CenteredContent {
             Text("Patient profile is unavailable.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
         }
         return
     }
-    val serious = simulation.riskLevel == RiskLevel.High ||
-        route == AppRoute.RecommendedAction ||
-        route == AppRoute.ShareWithCaregiver
-
-    val content: @Composable () -> Unit = {
-        when (route) {
-            AppRoute.Home -> DashboardScreen(
-                user = user,
-                vitals = vitals,
-                result = simulation,
-                onRunSimulation = onRunSimulation,
-                onRecommendedAction = { onRoute(AppRoute.RecommendedAction) },
-                onShare = { onRoute(AppRoute.ShareWithCaregiver) },
-                modifier = Modifier.fillMaxSize(),
-            )
-            AppRoute.Agents -> AgentsScreen(
-                agents = DisplayContent.agents,
-                user = user,
-                medical = medical,
-                vitals = vitals,
-                deliberationState = deliberationState,
-                onRefreshDeliberation = onRefreshDeliberation,
-                onConversation = { onRoute(AppRoute.Conversation) },
-                modifier = Modifier.fillMaxSize(),
-            )
-            AppRoute.History -> HistoryScreen(DisplayContent.history, Modifier.fillMaxSize())
-            AppRoute.Profile -> ProfileScreen(user, medical, onSave = onProfileSave, modifier = Modifier.fillMaxSize())
-            AppRoute.Simulation -> SimulationScreen(user, simulationRun, simulation, onRunSimulation, Modifier.fillMaxSize())
-            AppRoute.Conversation -> AgentConversationScreen(DisplayContent.conversation, simulation.recommendation, Modifier.fillMaxSize())
-            AppRoute.RecommendedAction -> RecommendedActionScreen(simulation.recommendation, Modifier.fillMaxSize())
-            AppRoute.ShareWithCaregiver -> ShareWithCaregiverScreen(user, medical, vitals, simulation, Modifier.fillMaxSize())
-        }
-    }
-
-    if (serious) {
-        content()
-    } else {
-        ImmersiveMascotShell(route = route, riskLevel = simulation.riskLevel, content = content)
-    }
-}
-
-@Composable
-private fun ImmersiveMascotShell(
-    route: AppRoute,
-    riskLevel: RiskLevel,
-    content: @Composable () -> Unit,
-) {
-    val message = when (route) {
-        AppRoute.Home -> "I’m watching your signals while you focus on feeling better."
-        AppRoute.Agents -> "The care team is thinking. I’ll stay with you while they talk."
-        AppRoute.History -> "I keep the calm notes organized so you can review them easily."
-        AppRoute.Profile -> "These details help me support handoffs without making a fuss."
-        AppRoute.Simulation -> "Let’s test the next few hours gently before anything changes."
-        AppRoute.Conversation -> "I’m listening along while the care team reaches a recommendation."
-        else -> "I’m nearby."
-    }
-    val mood = when {
-        riskLevel == RiskLevel.Moderate -> ImmersiveMascotMood.Attentive
-        route == AppRoute.Profile -> ImmersiveMascotMood.Private
-        else -> ImmersiveMascotMood.Happy
-    }
-
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
-                verticalAlignment = Alignment.Top,
-            ) {
-                ImmersiveMascotStage(
-                    message = message,
-                    mood = mood,
-                    modifier = Modifier
-                        .width(300.dp)
-                        .fillMaxHeight(),
-                )
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    content()
-                }
-            }
-        } else {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
-            ) {
-                ImmersiveMascotStage(
-                    message = message,
-                    mood = mood,
-                    compact = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    content()
-                }
-            }
-        }
-    }
-}
-
-private enum class ImmersiveMascotMood {
-    Happy,
-    Attentive,
-    Private,
-}
-
-@Composable
-private fun ImmersiveMascotStage(
-    message: String,
-    mood: ImmersiveMascotMood,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
-) {
-    val transition = rememberInfiniteTransition(label = "immersive-sova")
-    val bob by transition.animateFloat(
-        initialValue = -5f,
-        targetValue = 7f,
-        animationSpec = infiniteRepeatable(animation = tween(1200), repeatMode = RepeatMode.Reverse),
-        label = "immersive-sova-bob",
-    )
-    val peek by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 12f,
-        animationSpec = infiniteRepeatable(animation = tween(1400), repeatMode = RepeatMode.Reverse),
-        label = "immersive-sova-peek",
-    )
-    val image = when (mood) {
-        ImmersiveMascotMood.Happy -> Res.drawable.sova_mascot_smiling
-        ImmersiveMascotMood.Attentive -> Res.drawable.sova_mascot
-        ImmersiveMascotMood.Private -> Res.drawable.sova_mascot_eyes_closed
-    }
-    val stageSize = if (compact) 156.dp else 230.dp
-    val mascotSize = if (compact) 142.dp else 216.dp
-
-    Surface(
-        modifier = modifier,
-        color = HealthColors.AccentSoft,
-        shape = HealthShapes.Card,
-        shadowElevation = HealthSpacing.None,
-    ) {
-        Column(
-            modifier = Modifier.padding(HealthSpacing.Md),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
-        ) {
-            Text("Sova", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-            Box(
-                modifier = Modifier
-                    .size(stageSize)
-                    .clip(HealthShapes.Pill)
-                    .background(HealthColors.Surface),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
-                Crossfade(targetState = image, label = "immersive-sova-image") { target ->
-                    Image(
-                        painter = painterResource(target),
-                        contentDescription = "Sova mascot",
-                        modifier = Modifier
-                            .size(mascotSize)
-                            .offset(y = if (mood == ImmersiveMascotMood.Private) (36 - peek).dp else bob.dp)
-                            .graphicsLayer {
-                                rotationZ = if (mood == ImmersiveMascotMood.Private) -2f else bob * 0.22f
-                            },
-                    )
-                }
-            }
-            Text(message, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-        }
+    when (route) {
+        AppRoute.Home -> DashboardScreen(
+            user = user,
+            vitals = vitals,
+            result = simulation,
+            onRunSimulation = onRunSimulation,
+            onRecommendedAction = { onRoute(AppRoute.RecommendedAction) },
+            onShare = { onRoute(AppRoute.ShareWithCaregiver) },
+            modifier = Modifier.fillMaxSize(),
+        )
+        AppRoute.Agents -> AgentsScreen(
+            agents = DisplayContent.agents,
+            user = user,
+            medical = medical,
+            vitals = vitals,
+            deliberationState = deliberationState,
+            onRefreshDeliberation = onRefreshDeliberation,
+            onConversation = { onRoute(AppRoute.Conversation) },
+            modifier = Modifier.fillMaxSize(),
+        )
+        AppRoute.History -> HistoryScreen(DisplayContent.history, Modifier.fillMaxSize())
+        AppRoute.Profile -> ProfileScreen(user, medical, onSave = onProfileSave, modifier = Modifier.fillMaxSize())
+        AppRoute.Simulation -> SimulationScreen(user, simulationRun, simulation, onRunSimulation, Modifier.fillMaxSize())
+        AppRoute.Conversation -> AgentConversationScreen(DisplayContent.conversation, simulation.recommendation, Modifier.fillMaxSize())
+        AppRoute.RecommendedAction -> RecommendedActionScreen(simulation.recommendation, Modifier.fillMaxSize())
+        AppRoute.ShareWithCaregiver -> ShareWithCaregiverScreen(user, medical, vitals, simulation, Modifier.fillMaxSize())
     }
 }
 
@@ -547,6 +424,7 @@ private fun DesktopTopNavigation(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = HealthSpacing.Md)
             .background(HealthColors.Surface, HealthShapes.Pill)
             .padding(HealthSpacing.Xs),
         horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),

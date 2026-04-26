@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -93,11 +92,8 @@ private fun DashboardCompact(
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
         item {
-            StatusHeader(user, result)
+            PatientFocusCard(user, vitals, result, onSpecialistSelected)
         }
-        item { CurrentVitalsCard(vitals) }
-        item { RecommendationCard(user, result, onSpecialistSelected) }
-        item { LiveInsightsPanel(user.patientId, vitals) }
         item { TrajectoryCard(result.trajectory) }
     }
 }
@@ -114,37 +110,23 @@ private fun DashboardWide(
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                DesktopStatusCard(
-                    user = user,
-                    result = result,
-                    onSpecialistSelected = onSpecialistSelected,
-                    modifier = Modifier.weight(1.35f),
-                )
-                TrajectoryCard(
-                    trajectory = result.trajectory,
-                    modifier = Modifier.weight(0.85f),
-                )
-            }
+            PatientFocusCard(
+                user = user,
+                vitals = vitals,
+                result = result,
+                onSpecialistSelected = onSpecialistSelected,
+            )
         }
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
-                verticalAlignment = Alignment.Top,
-            ) {
-                CurrentVitalsCard(vitals, modifier = Modifier.weight(1.35f).fillMaxHeight())
-                LiveInsightsPanel(user.patientId, vitals, modifier = Modifier.weight(0.85f).fillMaxHeight())
-            }
+            TrajectoryCard(trajectory = result.trajectory)
         }
     }
 }
 
 @Composable
-private fun DesktopStatusCard(
+private fun PatientFocusCard(
     user: UserProfile,
+    vitals: Vitals,
     result: SimulationResult,
     onSpecialistSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -157,30 +139,47 @@ private fun DesktopStatusCard(
         shadowElevation = HealthSpacing.None,
     ) {
         Column(
-            modifier = Modifier.padding(HealthSpacing.Md),
+            modifier = Modifier.padding(HealthSpacing.Lg),
             verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Lg),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-                    JournalLabel("Current status")
-                    Text(
-                        "${user.firstName} is being monitored.",
-                        color = HealthColors.TextPrimary,
-                        style = MaterialTheme.typography.headlineLarge,
-                    )
-                    Text(
-                        "Monitoring the next 6 hours.",
-                        color = HealthColors.TextSecondary,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+            BoxWithConstraints {
+                if (maxWidth < HealthSpacing.DesktopBreakpoint / 2) {
+                    Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                        StatusCopy(user, result)
+                        StabilityIndex(score = stabilityScore(result))
+                    }
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Lg),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StatusCopy(user, result, modifier = Modifier.weight(1f))
+                        StabilityIndex(score = stabilityScore(result), modifier = Modifier.weight(0.45f))
+                    }
                 }
-                StabilityIndex(score = stabilityScore(result.riskLevel), modifier = Modifier.weight(0.45f))
             }
+            VitalsStrip(vitals)
             RecommendationCard(user, result, onSpecialistSelected)
         }
+    }
+}
+
+@Composable
+private fun StatusCopy(user: UserProfile, result: SimulationResult, modifier: Modifier = Modifier) {
+    val title = when (result.riskLevel) {
+        RiskLevel.Low -> "${user.firstName} is stable."
+        RiskLevel.Moderate -> "${user.firstName} needs a check-in."
+        RiskLevel.High -> "${user.firstName} needs help now."
+    }
+    val body = when (result.riskLevel) {
+        RiskLevel.Low -> result.summary
+        RiskLevel.Moderate -> result.summary
+        RiskLevel.High -> result.summary
+    }
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+        JournalLabel("Current status")
+        Text(title, color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
+        Text(body, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -235,6 +234,47 @@ private fun RecommendationCard(
     }
 }
 
+@Composable
+private fun VitalsStrip(vitals: Vitals, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
+        ) {
+            JournalLabel("Current vitals", modifier = Modifier.weight(1f))
+            Text(
+                when (vitals.medicationTaken) {
+                    true -> "Medication ok"
+                    false -> "Medication missed"
+                    null -> "Medication not reported"
+                },
+                color = when (vitals.medicationTaken) {
+                    true -> HealthColors.Success
+                    false -> HealthColors.Warning
+                    null -> HealthColors.TextSecondary
+                },
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        val metrics = currentVitalMetrics(vitals)
+        if (metrics.isEmpty()) {
+            Text("Waiting for live vitals.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        } else {
+            metrics.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                    row.forEach { metric ->
+                        VitalSummary(metric.label, metric.value, metric.unit, metric.color, Modifier.weight(1f))
+                    }
+                    repeat(3 - row.size) {
+                        Box(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
 private data class RecommendationCopy(
     val title: String,
     val body: String,
@@ -245,17 +285,17 @@ private fun recommendationCopy(result: SimulationResult): RecommendationCopy =
     when (result.riskLevel) {
         RiskLevel.Low -> RecommendationCopy(
             title = result.recommendation,
-            body = "Continue passive monitoring. Escalate only if symptoms change or oxygen trends downward.",
+            body = result.summary,
             background = HealthColors.SurfaceSubtle,
         )
         RiskLevel.Moderate -> RecommendationCopy(
-            title = "Talk with an AI care specialist",
-            body = "Sova needs a little more context before it can stay passive. A short check-in can clarify symptoms, medication timing, and recovery comfort.",
+            title = result.recommendation,
+            body = result.summary,
             background = HealthColors.AccentSoft,
         )
         RiskLevel.High -> RecommendationCopy(
-            title = "Call your caregiver",
-            body = "Risk is elevated. Contact your caregiver now, especially if symptoms are worsening or oxygen stays low.",
+            title = result.recommendation,
+            body = result.summary,
             background = HealthColors.SurfaceSubtle,
         )
     }
@@ -269,16 +309,22 @@ private fun StatusHeader(user: UserProfile, result: SimulationResult) {
             color = HealthColors.TextPrimary,
             style = MaterialTheme.typography.titleLarge,
         )
-        StabilityIndex(score = stabilityScore(result.riskLevel), modifier = Modifier.padding(vertical = HealthSpacing.Xs))
+        StabilityIndex(score = stabilityScore(result), modifier = Modifier.padding(vertical = HealthSpacing.Xs))
     }
 }
 
-private fun stabilityScore(riskLevel: RiskLevel): Int =
-    when (riskLevel) {
-        RiskLevel.Low -> 92
-        RiskLevel.Moderate -> 74
-        RiskLevel.High -> 48
+private fun stabilityScore(result: SimulationResult): Int {
+    val currentRisk = result.trajectory.points.firstOrNull()?.riskScore
+    return if (currentRisk == null) {
+        when (result.riskLevel) {
+            RiskLevel.Low -> 92
+            RiskLevel.Moderate -> 52
+            RiskLevel.High -> 18
+        }
+    } else {
+        (100 - currentRisk).coerceIn(0, 100)
     }
+}
 
 @Composable
 private fun CurrentVitalsCard(vitals: Vitals, modifier: Modifier = Modifier) {
@@ -313,17 +359,20 @@ private fun CurrentVitalsCard(vitals: Vitals, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                VitalSummary("Heart", vitals.heartRate?.toString() ?: "--", "bpm", heartRateColor(vitals.heartRate), Modifier.weight(1f))
-                VitalSummary("HRV", vitals.hrv?.toString() ?: "--", "ms", hrvColor(vitals.hrv), Modifier.weight(1f))
-                VitalSummary("Oxygen", vitals.spo2?.toString() ?: "--", "%", oxygenColor(vitals.spo2), Modifier.weight(1f))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                VitalSummary("Sleep", vitals.sleepHours?.toString() ?: "--", "hr", sleepColor(vitals.sleepHours), Modifier.weight(1f))
-                VitalSummary("Temp", vitals.temperature?.let { oneDecimal(it) } ?: "--", "F", temperatureColor(vitals.temperature), Modifier.weight(1f))
-            }
-            vitals.bloodPressure?.let {
-                Text("Blood pressure $it", color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
+            val metrics = currentVitalMetrics(vitals)
+            if (metrics.isEmpty()) {
+                Text("Waiting for live vitals.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            } else {
+                metrics.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                        row.forEach { metric ->
+                            VitalSummary(metric.label, metric.value, metric.unit, metric.color, Modifier.weight(1f))
+                        }
+                        repeat(3 - row.size) {
+                            Box(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
             }
             vitals.timestamp?.let {
                 Text("Updated $it", color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
@@ -331,6 +380,23 @@ private fun CurrentVitalsCard(vitals: Vitals, modifier: Modifier = Modifier) {
         }
     }
 }
+
+private data class VitalMetric(
+    val label: String,
+    val value: String,
+    val unit: String,
+    val color: androidx.compose.ui.graphics.Color,
+)
+
+private fun currentVitalMetrics(vitals: Vitals): List<VitalMetric> =
+    listOfNotNull(
+        vitals.heartRate?.let { VitalMetric("Heart", it.toString(), "bpm", heartRateColor(it)) },
+        vitals.bloodPressure?.let { VitalMetric("Pressure", it, "", bloodPressureColor(it)) },
+        vitals.temperature?.let { VitalMetric("Temp", oneDecimal(it), "F", temperatureColor(it)) },
+        vitals.spo2?.let { VitalMetric("Oxygen", it.toString(), "%", oxygenColor(it)) },
+        vitals.hrv?.let { VitalMetric("HRV", it.toString(), "ms", hrvColor(it)) },
+        vitals.sleepHours?.let { VitalMetric("Sleep", oneDecimal(it), "hr", sleepColor(it)) },
+    )
 
 @Composable
 private fun VitalSummary(
@@ -369,6 +435,19 @@ private fun hrvColor(value: Int?) =
 private fun oxygenColor(value: Int?) =
     if (value == null || value >= 95) HealthColors.Success else HealthColors.Danger
 
+private fun bloodPressureColor(value: String): androidx.compose.ui.graphics.Color {
+    val parts = value.replace(" ", "").split("/")
+    val systolic = parts.getOrNull(0)?.toIntOrNull()
+    val diastolic = parts.getOrNull(1)?.toIntOrNull()
+    return if (systolic == null || diastolic == null) {
+        HealthColors.Success
+    } else if (systolic >= 140 || diastolic >= 90) {
+        HealthColors.Warning
+    } else {
+        HealthColors.Success
+    }
+}
+
 private fun sleepColor(value: Double?) =
     if (value == null || value >= 6.5) HealthColors.Success else HealthColors.Warning
 
@@ -391,36 +470,5 @@ private fun TrajectoryCard(trajectory: org.sova.model.Trajectory, modifier: Modi
             }
         }
         PatientTrajectoryGraph(trajectory)
-    }
-}
-
-@Composable
-private fun LiveInsightsPanel(patientId: String, vitals: Vitals, modifier: Modifier = Modifier) {
-    JournalCard(modifier = modifier) {
-        Text("Live Insights", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-        JournalLabel("Patient ID: $patientId // Real-time synthesis")
-        SensorLine("Neural latency", "12ms", HealthColors.Accent)
-        SensorLine("Oxygen", vitals.spo2?.let { "$it%" } ?: "Not reported", oxygenColor(vitals.spo2))
-    }
-}
-
-@Composable
-private fun SensorLine(label: String, value: String, color: androidx.compose.ui.graphics.Color) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(HealthColors.SurfaceSubtle)
-            .padding(HealthSpacing.Xs),
-    ) {
-        Row {
-            JournalLabel(label, modifier = Modifier.weight(1f), color = color)
-            Text(value, color = HealthColors.Ink, style = MaterialTheme.typography.labelMedium)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(HealthSpacing.SmallBar)
-                .background(color, HealthShapes.Pill),
-        )
     }
 }
