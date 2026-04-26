@@ -467,11 +467,12 @@ fun SpecialistCallView(
                             }
                         },
                         onRequestMicrophone = ::requestMicrophone,
+                        onEndCall = onBack,
                     )
                 } else if (failed) {
                     FailedCallCard(specialist, callState as SpecialistCallState.Failed)
                 } else {
-                    ConnectingCallCard(specialist)
+                    ConnectingCallCard(specialist, onEndCall = onBack)
                 }
             }
         }
@@ -532,7 +533,7 @@ private fun CircularBackButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ConnectingCallCard(specialist: Specialist, modifier: Modifier = Modifier) {
+private fun ConnectingCallCard(specialist: Specialist, onEndCall: () -> Unit, modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "specialist-call-pulse")
     val pulse by transition.animateFloat(
         initialValue = 0.86f,
@@ -570,6 +571,7 @@ private fun ConnectingCallCard(specialist: Specialist, modifier: Modifier = Modi
             Text(specialist.name, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
             JournalLabel("Ringing secure line", color = HealthColors.Accent)
             Text("Waiting for the AI care specialist to join.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            EndCallButton(onClick = onEndCall)
         }
     }
 }
@@ -581,6 +583,7 @@ private fun ConnectedCallCard(
     microphoneAccess: MicrophoneAccessState?,
     onToggleMute: () -> Unit,
     onRequestMicrophone: () -> Unit,
+    onEndCall: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     JournalCard(modifier = modifier) {
@@ -599,6 +602,7 @@ private fun ConnectedCallCard(
                 enabled = true,
                 onClick = onToggleMute,
             )
+            EndCallButton(onClick = onEndCall)
             if (microphoneAccess == null || microphoneAccess == MicrophoneAccessState.Denied) {
                 SecondaryButton(
                     text = if (microphoneAccess == MicrophoneAccessState.Denied) "Try microphone again" else "Enable microphone",
@@ -616,6 +620,21 @@ private fun ConnectedCallCard(
                 color = if (microphoneAccess == MicrophoneAccessState.Granted && !muted) HealthColors.Accent else HealthColors.Danger,
             )
         }
+    }
+}
+
+@Composable
+private fun EndCallButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(HealthShapes.Pill)
+            .background(HealthColors.Danger, HealthShapes.Pill)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .clickable(onClick = onClick)
+            .padding(horizontal = HealthSpacing.Lg, vertical = HealthSpacing.Sm),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("End call", color = HealthColors.Surface, style = MaterialTheme.typography.bodyLarge)
     }
 }
 

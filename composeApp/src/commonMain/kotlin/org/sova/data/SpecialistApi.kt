@@ -359,6 +359,23 @@ object SpecialistApi {
                         }
                     }
                 } finally {
+                    runCatching {
+                        send(buildJsonObject {
+                            put("type", "session.end")
+                        }.toString())
+                        SovaLogger.event(
+                            subsystem = "websocket",
+                            event = "session-end-sent",
+                            sessionId = session.sessionId,
+                        )
+                    }.onFailure {
+                        SovaLogger.event(
+                            subsystem = "websocket",
+                            event = "session-end-send-failed",
+                            sessionId = session.sessionId,
+                            details = mapOf("error" to (it.message ?: it::class.simpleName)),
+                        )
+                    }
                     SovaLogger.event(
                         subsystem = "websocket",
                         event = "receive-loop-finished",
