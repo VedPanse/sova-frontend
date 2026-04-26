@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="https://sova-agents.onrender.com"
+BASE_URL="${SOVA_AGENTS_URL:-https://sova-agents.onrender.com}"
 PATIENT_ID="CR-003"
 
 PAYLOAD='{
