@@ -12,9 +12,9 @@ object HealthSpacing {
     val Stroke = 1.dp
     val Icon = 20.dp
     val NavIcon = 26.dp
-    val CouncilAvatar = 52.dp
-    val CouncilCardWidth = 156.dp
-    val CouncilCardHeight = 200.dp
+    val CouncilAvatar = 64.dp
+    val CouncilCardWidth = 188.dp
+    val CouncilCardHeight = 238.dp
     val SmallBar = 3.dp
     val VitalBar = 28.dp
     val StabilityRailWidth = 160.dp

@@ -146,28 +146,29 @@ private fun RefreshIconButton(onClick: () -> Unit) {
         border = BorderStroke(HealthSpacing.Stroke, HealthColors.Border),
     ) {
         Canvas(modifier = Modifier.padding(HealthSpacing.Xs)) {
-            val stroke = Stroke(width = HealthSpacing.Stroke.toPx() * 2f, cap = StrokeCap.Round)
+            val strokeWidth = HealthSpacing.Stroke.toPx() * 2.3f
+            val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
             drawArc(
                 color = HealthColors.Accent,
-                startAngle = 35f,
+                startAngle = 130f,
                 sweepAngle = 285f,
                 useCenter = false,
-                topLeft = Offset(size.width * 0.18f, size.height * 0.18f),
-                size = Size(size.width * 0.64f, size.height * 0.64f),
+                topLeft = Offset(size.width * 0.20f, size.height * 0.20f),
+                size = Size(size.width * 0.60f, size.height * 0.60f),
                 style = stroke,
             )
             drawLine(
                 color = HealthColors.Accent,
-                start = Offset(size.width * 0.78f, size.height * 0.20f),
-                end = Offset(size.width * 0.78f, size.height * 0.42f),
-                strokeWidth = stroke.width,
+                start = Offset(size.width * 0.73f, size.height * 0.19f),
+                end = Offset(size.width * 0.80f, size.height * 0.39f),
+                strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
             drawLine(
                 color = HealthColors.Accent,
-                start = Offset(size.width * 0.78f, size.height * 0.20f),
-                end = Offset(size.width * 0.58f, size.height * 0.24f),
-                strokeWidth = stroke.width,
+                start = Offset(size.width * 0.73f, size.height * 0.19f),
+                end = Offset(size.width * 0.52f, size.height * 0.21f),
+                strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
         }

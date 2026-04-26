@@ -3,6 +3,7 @@ package org.sova.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,24 +61,25 @@ fun HistoryScreen(
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
-                JournalLabel("Patient status: stable")
-                Text("Actions &\nRecords", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
+            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                JournalLabel("Care history")
+                Text("Recent meetings", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
                 Text(
-                    "A chronological ledger of patient interactions and clinical escalations overseen by the SOVA Care Protocol.",
+                    "Short summaries of check-ins and AI reviews.",
                     color = HealthColors.TextSecondary,
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
         }
-        item {
-            Text("Recent Meetings", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-        }
         items(visibleMeetings) { item ->
+            val interactionSource = remember { MutableInteractionSource() }
             JournalCard(
                 modifier = Modifier
                     .pointerHoverIcon(PointerIcon.Hand)
-                    .clickable { selectedMeeting = item },
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                    ) { selectedMeeting = item },
             ) {
                 MeetingCardContent(item)
             }

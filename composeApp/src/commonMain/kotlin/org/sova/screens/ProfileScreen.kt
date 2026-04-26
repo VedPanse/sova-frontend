@@ -86,8 +86,10 @@ private fun ProfileSummaryScreen(
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                Text("Patient profile", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge.copy(fontStyle = FontStyle.Italic))
+            Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+                JournalLabel("Profile")
+                Text("Your recovery details", color = HealthColors.TextPrimary, style = MaterialTheme.typography.headlineLarge)
+                Text("Edit only what changed. Sova keeps the rest quiet.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             }
         }
         item {
@@ -139,7 +141,6 @@ private fun ProfileSummaryScreen(
         }
         item {
             JournalCard {
-                ScenicBlock()
                 JournalLabel("Data & privacy")
                 Text("Sova stores only your patient ID on this device. Profile updates sync through the secure backend.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             }
@@ -170,19 +171,33 @@ private fun EditPencilButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.size(HealthSpacing.Icon)) {
-            val stroke = Stroke(width = HealthSpacing.Stroke.toPx() * 1.8f, cap = StrokeCap.Round)
+            val strokeWidth = HealthSpacing.Stroke.toPx() * 2.0f
             drawLine(
                 color = HealthColors.TextSecondary,
-                start = Offset(size.width * 0.28f, size.height * 0.72f),
-                end = Offset(size.width * 0.72f, size.height * 0.28f),
-                strokeWidth = stroke.width,
+                start = Offset(size.width * 0.30f, size.height * 0.70f),
+                end = Offset(size.width * 0.68f, size.height * 0.32f),
+                strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
             drawLine(
                 color = HealthColors.TextSecondary,
-                start = Offset(size.width * 0.22f, size.height * 0.78f),
-                end = Offset(size.width * 0.34f, size.height * 0.74f),
-                strokeWidth = stroke.width,
+                start = Offset(size.width * 0.38f, size.height * 0.78f),
+                end = Offset(size.width * 0.76f, size.height * 0.40f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = HealthColors.TextSecondary,
+                start = Offset(size.width * 0.68f, size.height * 0.32f),
+                end = Offset(size.width * 0.76f, size.height * 0.40f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = HealthColors.TextPrimary,
+                start = Offset(size.width * 0.24f, size.height * 0.78f),
+                end = Offset(size.width * 0.38f, size.height * 0.78f),
+                strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
         }

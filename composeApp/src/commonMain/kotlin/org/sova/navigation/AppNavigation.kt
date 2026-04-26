@@ -165,7 +165,12 @@ fun AppNavigation() {
             AgentDeliberationApi.observe(user.patientId).collect { event ->
                 when (event) {
                     is AgentDeliberationEvent.Started -> {
-                        deliberationState = AgentDeliberationState.Streaming(messages = messages.toList(), convergence = convergence)
+                        activeAgent = "Sova council"
+                        deliberationState = AgentDeliberationState.Streaming(
+                            messages = messages.toList(),
+                            convergence = convergence,
+                            activeAgent = activeAgent,
+                        )
                     }
                     is AgentDeliberationEvent.Message -> {
                         messages += event.value

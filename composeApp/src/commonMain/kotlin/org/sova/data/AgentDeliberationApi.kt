@@ -139,6 +139,7 @@ object AgentDeliberationApi {
             return
         }
         when (payload.type) {
+            "started" -> emit(AgentDeliberationEvent.Started)
             "agent" -> {
                 emit(AgentDeliberationEvent.Message(payload.toAgentMessage()))
                 emit(AgentDeliberationEvent.Convergence(payload.convergence))

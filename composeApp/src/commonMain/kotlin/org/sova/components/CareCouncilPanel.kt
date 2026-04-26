@@ -191,9 +191,15 @@ private data class CouncilAgent(
 )
 
 private val councilAgents = listOf(
-    CouncilAgent("GP", "General Care", "Primary care - synthesizes the whole picture", HealthColors.SurfaceSubtle),
-    CouncilAgent("CD", "Cardio Care", "Heart rhythm and cardiac risk", HealthColors.AccentSoft),
-    CouncilAgent("PH", "Pharma Care", "Medication timing and interactions", HealthColors.Success.copy(alpha = 0.35f)),
-    CouncilAgent("BH", "Behavioral Health", "Sleep, stress, and daily barriers", HealthColors.MutedBlue.copy(alpha = 0.30f)),
-    CouncilAgent("PA", "Patient Advocate", "Preference, comfort, and quality of life", HealthColors.Warning.copy(alpha = 0.35f)),
+    CouncilAgent("GP", "General Physician", "Primary care and care coordination", HealthColors.SurfaceSubtle),
+    CouncilAgent("CD", "Cardiologist", "Heart rhythm and cardiac risk", HealthColors.AccentSoft),
+    CouncilAgent("CC", "Critical Care", "Urgency and escalation thresholds", HealthColors.Warning.copy(alpha = 0.35f)),
+    CouncilAgent("PH", "Clinical Pharmacist", "Medication timing and interactions", HealthColors.Success.copy(alpha = 0.35f)),
+    CouncilAgent("PU", "Pulmonologist", "Oxygen and breathing patterns", HealthColors.MutedBlue.copy(alpha = 0.30f)),
+    CouncilAgent("NE", "Nephrologist", "Fluids and kidney-safe dosing", HealthColors.AccentSoft),
+    CouncilAgent("HE", "Hematologist", "Clotting and bleeding risk", HealthColors.Warning.copy(alpha = 0.30f)),
+    CouncilAgent("PT", "Physiotherapist", "Mobility and rehab safety", HealthColors.Success.copy(alpha = 0.30f)),
+    CouncilAgent("SU", "Cardiothoracic Surgeon", "Surgical risk and thresholds", HealthColors.MutedBlue.copy(alpha = 0.25f)),
+    CouncilAgent("NU", "Clinical Nutritionist", "Diet, fluids, and recovery fuel", HealthColors.SurfaceSubtle),
+    CouncilAgent("OB", "OB/GYN Specialist", "Sex-specific recovery factors", HealthColors.Warning.copy(alpha = 0.25f)),
 )
