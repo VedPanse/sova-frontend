@@ -49,10 +49,11 @@ fun PatientTrajectoryGraph(
                 .background(HealthColors.SurfaceSubtle, HealthShapes.SmallCard)
                 .padding(HealthSpacing.Sm),
         ) {
+            val domain = rememberRiskDomain(points.map { it.riskScore })
             Canvas(modifier = Modifier.fillMaxWidth().height(HealthSpacing.ChartHeight - HealthSpacing.Lg)) {
                 if (points.isEmpty()) return@Canvas
 
-                val left = size.width * 0.08f
+                val left = size.width * 0.12f
                 val right = size.width * 0.96f
                 val top = size.height * 0.08f
                 val bottom = size.height * 0.84f
@@ -60,9 +61,21 @@ fun PatientTrajectoryGraph(
                 val graphHeight = bottom - top
 
                 listOf(68 to RiskLevel.High, 36 to RiskLevel.Moderate, 18 to RiskLevel.Low).forEach { (score, risk) ->
-                    val y = riskScoreY(score, top, graphHeight)
+                    if (score in domain.min..domain.max) {
+                        val y = riskScoreY(score, top, graphHeight, domain)
+                        drawLine(
+                            color = riskColor(risk).copy(alpha = 0.24f),
+                            start = Offset(left, y),
+                            end = Offset(right, y),
+                            strokeWidth = HealthSpacing.Stroke.toPx(),
+                        )
+                    }
+                }
+
+                domain.ticks.forEach { tick ->
+                    val y = riskScoreY(tick, top, graphHeight, domain)
                     drawLine(
-                        color = riskColor(risk).copy(alpha = 0.24f),
+                        color = HealthColors.Border.copy(alpha = 0.38f),
                         start = Offset(left, y),
                         end = Offset(right, y),
                         strokeWidth = HealthSpacing.Stroke.toPx(),
@@ -74,7 +87,7 @@ fun PatientTrajectoryGraph(
                     val xProgress = point.hoursFromNow?.let { (it / maxHours).toFloat().coerceIn(0f, 1f) }
                         ?: if (points.size == 1) 0f else index.toFloat() / points.lastIndex.toFloat()
                     val x = left + graphWidth * xProgress
-                    Offset(x, riskScoreY(point.riskScore, top, graphHeight))
+                    Offset(x, riskScoreY(point.riskScore, top, graphHeight, domain))
                 }
 
                 if (plotted.size > 1) {
@@ -99,8 +112,18 @@ fun PatientTrajectoryGraph(
                     drawCircle(color = color, radius = HealthSpacing.Xs.toPx() * 0.62f, center = offset)
                 }
             }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .height(HealthSpacing.ChartHeight - HealthSpacing.Lg),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                domain.ticks.reversed().forEach { tick ->
+                    Text(tick.toString(), color = HealthColors.TextSecondary, style = MaterialTheme.typography.labelSmall)
+                }
+            }
             AxisLabel(
-                text = "Projected risk score",
+                text = "Risk score",
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .graphicsLayer { rotationZ = -90f },
@@ -112,9 +135,13 @@ fun PatientTrajectoryGraph(
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             points.forEach { point ->
-                Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2)) {
+                Column(
+                    modifier = Modifier.width(HealthSpacing.Xl),
+                    verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     Text(point.label, color = HealthColors.MutedBlue, style = MaterialTheme.typography.labelMedium)
-                    Text("${point.riskLevel.name} ${point.riskScore}", color = riskColor(point.riskLevel), style = MaterialTheme.typography.labelMedium)
+                    Text("${riskShort(point.riskLevel)} ${point.riskScore}", color = riskColor(point.riskLevel), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -145,12 +172,40 @@ private fun LegendDot(label: String, color: Color) {
     }
 }
 
-private fun riskScoreY(score: Int, top: Float, graphHeight: Float): Float =
-    top + graphHeight * (1f - score.coerceIn(0, 100).toFloat() / 100f)
+private data class RiskDomain(
+    val min: Int,
+    val max: Int,
+    val ticks: List<Int>,
+)
+
+private fun rememberRiskDomain(scores: List<Int>): RiskDomain {
+    if (scores.isEmpty()) return RiskDomain(0, 100, listOf(0, 50, 100))
+    val low = scores.minOrNull()?.coerceIn(0, 100) ?: 0
+    val high = scores.maxOrNull()?.coerceIn(0, 100) ?: 100
+    val span = (high - low).coerceAtLeast(24)
+    val center = (low + high) / 2
+    val min = (center - span / 2 - 4).coerceAtLeast(0)
+    val max = (center + span / 2 + 4).coerceAtMost(100)
+    val mid = (min + max) / 2
+    return RiskDomain(min = min, max = max, ticks = listOf(min, mid, max).distinct())
+}
+
+private fun riskScoreY(score: Int, top: Float, graphHeight: Float, domain: RiskDomain): Float {
+    val span = (domain.max - domain.min).coerceAtLeast(1)
+    val progress = (score.coerceIn(domain.min, domain.max) - domain.min).toFloat() / span.toFloat()
+    return top + graphHeight * (1f - progress)
+}
 
 private fun riskColor(risk: RiskLevel): Color =
     when (risk) {
         RiskLevel.Low -> HealthColors.Success
         RiskLevel.Moderate -> HealthColors.Warning
         RiskLevel.High -> HealthColors.Danger
+    }
+
+private fun riskShort(risk: RiskLevel): String =
+    when (risk) {
+        RiskLevel.Low -> "L"
+        RiskLevel.Moderate -> "M"
+        RiskLevel.High -> "H"
     }
