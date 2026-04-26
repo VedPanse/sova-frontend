@@ -51,6 +51,7 @@ actual object SpecialistCallAudio {
             var silentChunksAfterSpeech = 0
             var noiseFloor = 140.0
             var lastLoggedChunk = 0
+            var highEnergyChunks = 0
             while (currentCoroutineContext().isActive) {
                 val read = line.read(buffer, 0, buffer.size)
                 if (read > 0) {
@@ -60,6 +61,11 @@ actual object SpecialistCallAudio {
                     }
                     val threshold = maxOf(420.0, noiseFloor * 3.2)
                     val speechDetected = level >= threshold
+                    if (speechDetected) {
+                        highEnergyChunks += 1
+                    } else {
+                        highEnergyChunks = 0
+                    }
                     if (!firstChunkLogged) {
                         SovaLogger.event(
                             subsystem = "mic",
@@ -108,7 +114,10 @@ actual object SpecialistCallAudio {
                                 ),
                             )
                         }
-                        if (silentChunksAfterSpeech >= 8 && speechChunks >= 6) {
+                        val turnEndedBySilence = silentChunksAfterSpeech >= 5 && speechChunks >= 6
+                        val turnEndedByMaxDuration = speechChunks >= 220
+                        val turnEndedByLongSoftAudio = speechChunks >= 80 && highEnergyChunks == 0 && level < threshold * 0.7
+                        if (turnEndedBySilence || turnEndedByMaxDuration || turnEndedByLongSoftAudio) {
                             emit(AudioEndMarker)
                             SovaLogger.event(
                                 subsystem = "mic",
@@ -117,12 +126,18 @@ actual object SpecialistCallAudio {
                                     "speechChunks" to speechChunks.toString(),
                                     "silentChunks" to silentChunksAfterSpeech.toString(),
                                     "rms" to level.toInt().toString(),
+                                    "reason" to when {
+                                        turnEndedByMaxDuration -> "max-duration"
+                                        turnEndedByLongSoftAudio -> "long-soft-audio"
+                                        else -> "silence"
+                                    },
                                 ),
                             )
                             speechActive = false
                             speechChunks = 0
                             silentChunksAfterSpeech = 0
                             lastLoggedChunk = 0
+                            highEnergyChunks = 0
                         }
                     }
                 }
