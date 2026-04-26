@@ -30,11 +30,13 @@ import org.sova.components.PatientTrajectoryGraph
 import org.sova.components.PrimaryButton
 import org.sova.components.SecondaryButton
 import org.sova.components.StabilityIndex
+import org.sova.data.LiveMonitoringNotificationPayload
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.model.RiskLevel
 import org.sova.model.SimulationResult
+import org.sova.model.Specialist
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
 
@@ -43,15 +45,18 @@ fun DashboardScreen(
     user: UserProfile,
     vitals: Vitals,
     result: SimulationResult,
+    specialists: List<Specialist>,
+    notification: LiveMonitoringNotificationPayload?,
     onRunSimulation: () -> Unit,
     onRecommendedAction: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var activeSpecialist by remember { mutableStateOf<String?>(null) }
+    var activeSpecialist by remember { mutableStateOf<Specialist?>(null) }
 
     activeSpecialist?.let { specialist ->
         SpecialistCallView(
+            user = user,
             specialist = specialist,
             onBack = { activeSpecialist = null },
             modifier = modifier.fillMaxWidth(),
@@ -65,6 +70,8 @@ fun DashboardScreen(
                 user = user,
                 vitals = vitals,
                 result = result,
+                specialists = specialists,
+                notification = notification,
                 onRunSimulation = onRunSimulation,
                 onRecommendedAction = onRecommendedAction,
                 onSpecialistSelected = { activeSpecialist = it },
@@ -75,6 +82,8 @@ fun DashboardScreen(
                 user = user,
                 vitals = vitals,
                 result = result,
+                specialists = specialists,
+                notification = notification,
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -87,12 +96,17 @@ private fun DashboardCompact(
     user: UserProfile,
     vitals: Vitals,
     result: SimulationResult,
-    onSpecialistSelected: (String) -> Unit,
+    specialists: List<Specialist>,
+    notification: LiveMonitoringNotificationPayload?,
+    onSpecialistSelected: (Specialist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+        notification?.let {
+            item { MonitoringNotificationCard(it) }
+        }
         item {
-            PatientFocusCard(user, vitals, result, onSpecialistSelected)
+            PatientFocusCard(user, vitals, result, specialists, onSpecialistSelected)
         }
         item { TrajectoryCard(result.trajectory) }
     }
@@ -103,17 +117,23 @@ private fun DashboardWide(
     user: UserProfile,
     vitals: Vitals,
     result: SimulationResult,
+    specialists: List<Specialist>,
+    notification: LiveMonitoringNotificationPayload?,
     onRunSimulation: () -> Unit,
     onRecommendedAction: () -> Unit,
-    onSpecialistSelected: (String) -> Unit,
+    onSpecialistSelected: (Specialist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
+        notification?.let {
+            item { MonitoringNotificationCard(it) }
+        }
         item {
             PatientFocusCard(
                 user = user,
                 vitals = vitals,
                 result = result,
+                specialists = specialists,
                 onSpecialistSelected = onSpecialistSelected,
             )
         }
@@ -124,11 +144,41 @@ private fun DashboardWide(
 }
 
 @Composable
+private fun MonitoringNotificationCard(notification: LiveMonitoringNotificationPayload, modifier: Modifier = Modifier) {
+    var dismissed by remember(notification.type, notification.title) { mutableStateOf(false) }
+    if (dismissed) return
+    val urgent = notification.type == "caregiver_escalation"
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = if (urgent) HealthColors.Warning.copy(alpha = 0.22f) else HealthColors.AccentSoft,
+        shape = HealthShapes.Card,
+        border = BorderStroke(HealthSpacing.Stroke, if (urgent) HealthColors.Warning else HealthColors.Border),
+        shadowElevation = HealthSpacing.None,
+    ) {
+        Column(
+            modifier = Modifier.padding(HealthSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs),
+        ) {
+            JournalLabel(if (urgent) "Caregiver notice" else "Health check")
+            Text(notification.title, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+            Text(notification.message, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            if (notification.requiresResponse) {
+                Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
+                    SecondaryButton("Yes", onClick = { dismissed = true }, modifier = Modifier.weight(1f))
+                    PrimaryButton("No", onClick = { dismissed = true }, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun PatientFocusCard(
     user: UserProfile,
     vitals: Vitals,
     result: SimulationResult,
-    onSpecialistSelected: (String) -> Unit,
+    specialists: List<Specialist>,
+    onSpecialistSelected: (Specialist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -159,7 +209,7 @@ private fun PatientFocusCard(
                 }
             }
             VitalsStrip(vitals)
-            RecommendationCard(user, result, onSpecialistSelected)
+            RecommendationCard(user, result, specialists, onSpecialistSelected)
         }
     }
 }
@@ -187,7 +237,8 @@ private fun StatusCopy(user: UserProfile, result: SimulationResult, modifier: Mo
 private fun RecommendationCard(
     user: UserProfile,
     result: SimulationResult,
-    onSpecialistSelected: (String) -> Unit,
+    specialists: List<Specialist>,
+    onSpecialistSelected: (Specialist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val recommendation = recommendationCopy(result)
@@ -211,11 +262,11 @@ private fun RecommendationCard(
         )
         when (result.riskLevel) {
             RiskLevel.Low -> Unit
-            RiskLevel.Moderate -> CareCouncilPanel(onSpecialistSelected = onSpecialistSelected)
+            RiskLevel.Moderate -> CareCouncilPanel(specialists = specialists, onSpecialistSelected = onSpecialistSelected)
             RiskLevel.High -> Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
                 PrimaryButton(
                     text = "Have Sova call $caregiverName",
-                    onClick = { onSpecialistSelected("Caregiver Outreach") },
+                    onClick = { onSpecialistSelected(specialists.firstOrNull() ?: Specialist("general_physician", "General Physician", "Family Medicine")) },
                     modifier = Modifier.weight(1f),
                     enabled = caregiverContact.isNotBlank(),
                 )
@@ -466,7 +517,7 @@ private fun TrajectoryCard(trajectory: org.sova.model.Trajectory, modifier: Modi
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs)) {
                 Text("Patient trajectory", color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
-                Text("Projected risk over the next 6 hours.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                Text("Risk history, current state, and next 6 hours.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             }
         }
         PatientTrajectoryGraph(trajectory)

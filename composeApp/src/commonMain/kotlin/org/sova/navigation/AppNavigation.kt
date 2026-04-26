@@ -45,7 +45,9 @@ import org.sova.data.LiveMonitoringApi
 import org.sova.data.LiveMonitoringStatusPayload
 import org.sova.data.PatientProfileApi
 import org.sova.data.PatientProfilePersistence
+import org.sova.data.SpecialistApi
 import org.sova.data.fallbackMonitoringResult
+import org.sova.data.fallbackSpecialists
 import org.sova.data.toAgentDeliberationStartRequest
 import org.sova.data.toPatientProfilePayload
 import org.sova.components.JournalTopBar
@@ -57,6 +59,7 @@ import org.sova.model.AgentDeliberationMessage
 import org.sova.model.AgentDeliberationState
 import org.sova.model.MedicalProfile
 import org.sova.model.SimulationResult
+import org.sova.model.Specialist
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
 import org.sova.screens.AgentConversationScreen
@@ -85,6 +88,11 @@ fun AppNavigation() {
     var deliberationState by remember { mutableStateOf<AgentDeliberationState>(AgentDeliberationState.Idle) }
     var deliberationRefreshKey by remember { mutableStateOf(0) }
     var observedDeliberationKey by remember { mutableStateOf<String?>(null) }
+    var specialists by remember { mutableStateOf<List<Specialist>>(fallbackSpecialists()) }
+
+    LaunchedEffect(Unit) {
+        specialists = SpecialistApi.specialists()
+    }
 
     LaunchedEffect(patientId) {
         val draft = PatientProfilePersistence.loadDraft()
@@ -264,6 +272,7 @@ fun AppNavigation() {
                         medicalProfile = medicalProfile,
                         vitals = vitals,
                         monitoringStatus = monitoringStatus,
+                        specialists = specialists,
                         route = route,
                         simulationRun = simulationRun,
                         deliberationState = deliberationState,
@@ -300,6 +309,7 @@ fun AppNavigation() {
                         medicalProfile = medicalProfile,
                         vitals = vitals,
                         monitoringStatus = monitoringStatus,
+                        specialists = specialists,
                         route = route,
                         simulationRun = simulationRun,
                         deliberationState = deliberationState,
@@ -338,6 +348,7 @@ private fun RouteContent(
     medicalProfile: MedicalProfile?,
     vitals: Vitals,
     monitoringStatus: LiveMonitoringStatusPayload?,
+    specialists: List<Specialist>,
     route: AppRoute,
     simulationRun: Boolean,
     deliberationState: AgentDeliberationState,
@@ -360,6 +371,8 @@ private fun RouteContent(
             user = user,
             vitals = vitals,
             result = simulation,
+            specialists = specialists,
+            notification = monitoringStatus?.notification,
             onRunSimulation = onRunSimulation,
             onRecommendedAction = { onRoute(AppRoute.RecommendedAction) },
             onShare = { onRoute(AppRoute.ShareWithCaregiver) },
@@ -371,6 +384,7 @@ private fun RouteContent(
             medical = medical,
             vitals = vitals,
             deliberationState = deliberationState,
+            specialists = specialists,
             onRefreshDeliberation = onRefreshDeliberation,
             onConversation = { onRoute(AppRoute.Conversation) },
             modifier = Modifier.fillMaxSize(),

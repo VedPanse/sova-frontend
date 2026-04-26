@@ -39,7 +39,8 @@ fun PatientTrajectoryGraph(
         verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
-            LegendDot("Now", HealthColors.Ink)
+            LegendDot("History", HealthColors.TextSecondary)
+            LegendDot("Current", HealthColors.Ink)
             LegendDot("Projected", HealthColors.Success)
         }
         Box(
@@ -82,32 +83,48 @@ fun PatientTrajectoryGraph(
                     )
                 }
 
-                val maxHours = points.mapNotNull { it.hoursFromNow }.maxOrNull()?.takeIf { it > 0.0 } ?: 6.0
+                val hours = points.mapIndexed { index, point -> point.hoursFromNow ?: index.toDouble() }
+                val minHours = hours.minOrNull() ?: 0.0
+                val maxHours = hours.maxOrNull()?.takeIf { it > minHours } ?: (minHours + 6.0)
+                val hourSpan = (maxHours - minHours).takeIf { it > 0.0 } ?: 1.0
                 val plotted = points.mapIndexed { index, point ->
-                    val xProgress = point.hoursFromNow?.let { (it / maxHours).toFloat().coerceIn(0f, 1f) }
-                        ?: if (points.size == 1) 0f else index.toFloat() / points.lastIndex.toFloat()
+                    val hour = point.hoursFromNow ?: index.toDouble()
+                    val xProgress = ((hour - minHours) / hourSpan).toFloat().coerceIn(0f, 1f)
                     val x = left + graphWidth * xProgress
                     Offset(x, riskScoreY(point.riskScore, top, graphHeight, domain))
                 }
 
                 if (plotted.size > 1) {
-                    val path = Path().apply {
-                        moveTo(plotted.first().x, plotted.first().y)
-                        plotted.windowed(2).forEach { (from, to) ->
+                    plotted.windowed(2).forEachIndexed { index, pair ->
+                        val from = pair[0]
+                        val to = pair[1]
+                        val fromHour = points[index].hoursFromNow ?: index.toDouble()
+                        val toHour = points[index + 1].hoursFromNow ?: (index + 1).toDouble()
+                        val segmentColor = when {
+                            toHour < 0.0 -> HealthColors.TextSecondary
+                            fromHour <= 0.0 && toHour >= 0.0 -> HealthColors.Ink
+                            else -> HealthColors.Success
+                        }
+                        val path = Path().apply {
+                            moveTo(from.x, from.y)
                             val controlX = (from.x + to.x) / 2f
                             cubicTo(controlX, from.y, controlX, to.y, to.x, to.y)
                         }
+                        drawPath(
+                            path = path,
+                            color = segmentColor,
+                            style = Stroke(width = HealthSpacing.SmallBar.toPx(), cap = StrokeCap.Round),
+                        )
                     }
-                    drawPath(
-                        path = path,
-                        color = HealthColors.Success,
-                        style = Stroke(width = HealthSpacing.SmallBar.toPx(), cap = StrokeCap.Round),
-                    )
                 }
 
                 plotted.forEachIndexed { index, offset ->
                     val point = points[index]
-                    val color = if (index == 0) HealthColors.Ink else riskColor(point.riskLevel)
+                    val color = when {
+                        (point.hoursFromNow ?: 0.0) < 0.0 -> HealthColors.TextSecondary
+                        (point.hoursFromNow ?: 0.0) == 0.0 -> HealthColors.Ink
+                        else -> riskColor(point.riskLevel)
+                    }
                     drawCircle(color = HealthColors.Surface, radius = HealthSpacing.Xs.toPx(), center = offset)
                     drawCircle(color = color, radius = HealthSpacing.Xs.toPx() * 0.62f, center = offset)
                 }

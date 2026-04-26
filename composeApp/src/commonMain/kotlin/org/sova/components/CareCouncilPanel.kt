@@ -32,11 +32,13 @@ import androidx.compose.ui.unit.dp
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
+import org.sova.model.Specialist
 
 @Composable
 fun CareCouncilPanel(
+    specialists: List<Specialist>,
     modifier: Modifier = Modifier,
-    onSpecialistSelected: (String) -> Unit = {},
+    onSpecialistSelected: (Specialist) -> Unit = {},
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -124,8 +126,8 @@ fun CareCouncilPanel(
                     .padding(HealthSpacing.Sm),
                 horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
             ) {
-                items(councilAgents) { agent ->
-                    CouncilAgentCard(agent, onClick = { onSpecialistSelected(agent.name) })
+                items(specialists) { specialist ->
+                    CouncilAgentCard(specialist, onClick = { onSpecialistSelected(specialist) })
                 }
             }
         }
@@ -133,7 +135,7 @@ fun CareCouncilPanel(
 }
 
 @Composable
-private fun CouncilAgentCard(agent: CouncilAgent, onClick: () -> Unit) {
+private fun CouncilAgentCard(specialist: Specialist, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .width(HealthSpacing.CouncilCardWidth)
@@ -150,13 +152,13 @@ private fun CouncilAgentCard(agent: CouncilAgent, onClick: () -> Unit) {
         Box(
             modifier = Modifier
                 .size(HealthSpacing.CouncilAvatar)
-                .background(agent.avatarColor, HealthShapes.Pill),
+                .background(specialist.avatarColor(), HealthShapes.Pill),
             contentAlignment = Alignment.Center,
         ) {
-            Text(agent.initials, color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
+            Text(specialist.initials, color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
         }
         Text(
-            text = agent.name,
+            text = specialist.name,
             color = HealthColors.TextPrimary,
             style = MaterialTheme.typography.bodyLarge,
             maxLines = 1,
@@ -164,7 +166,7 @@ private fun CouncilAgentCard(agent: CouncilAgent, onClick: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Text(
-            text = agent.role,
+            text = specialist.specialty,
             modifier = Modifier.weight(1f),
             color = HealthColors.TextSecondary,
             style = MaterialTheme.typography.bodyLarge,
@@ -183,23 +185,12 @@ private fun CouncilAgentCard(agent: CouncilAgent, onClick: () -> Unit) {
     }
 }
 
-private data class CouncilAgent(
-    val initials: String,
-    val name: String,
-    val role: String,
-    val avatarColor: Color,
-)
-
-private val councilAgents = listOf(
-    CouncilAgent("GP", "General Physician", "Primary care and care coordination", HealthColors.SurfaceSubtle),
-    CouncilAgent("CD", "Cardiologist", "Heart rhythm and cardiac risk", HealthColors.AccentSoft),
-    CouncilAgent("CC", "Critical Care", "Urgency and escalation thresholds", HealthColors.Warning.copy(alpha = 0.35f)),
-    CouncilAgent("PH", "Clinical Pharmacist", "Medication timing and interactions", HealthColors.Success.copy(alpha = 0.35f)),
-    CouncilAgent("PU", "Pulmonologist", "Oxygen and breathing patterns", HealthColors.MutedBlue.copy(alpha = 0.30f)),
-    CouncilAgent("NE", "Nephrologist", "Fluids and kidney-safe dosing", HealthColors.AccentSoft),
-    CouncilAgent("HE", "Hematologist", "Clotting and bleeding risk", HealthColors.Warning.copy(alpha = 0.30f)),
-    CouncilAgent("PT", "Physiotherapist", "Mobility and rehab safety", HealthColors.Success.copy(alpha = 0.30f)),
-    CouncilAgent("SU", "Cardiothoracic Surgeon", "Surgical risk and thresholds", HealthColors.MutedBlue.copy(alpha = 0.25f)),
-    CouncilAgent("NU", "Clinical Nutritionist", "Diet, fluids, and recovery fuel", HealthColors.SurfaceSubtle),
-    CouncilAgent("OB", "OB/GYN Specialist", "Sex-specific recovery factors", HealthColors.Warning.copy(alpha = 0.25f)),
-)
+private fun Specialist.avatarColor(): Color =
+    when {
+        id.contains("cardio") -> HealthColors.AccentSoft
+        id.contains("critical") -> HealthColors.Warning.copy(alpha = 0.35f)
+        id.contains("pharmac") -> HealthColors.Success.copy(alpha = 0.35f)
+        id.contains("pulmo") -> HealthColors.MutedBlue.copy(alpha = 0.30f)
+        id.contains("nutrition") -> HealthColors.SurfaceSubtle
+        else -> HealthColors.AccentSoft
+    }

@@ -37,20 +37,25 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import org.sova.audio.MicrophoneAccess
 import org.sova.audio.MicrophoneAccessState
+import org.sova.audio.SpecialistCallAudio
 import org.sova.components.AgentDeliberationPanel
 import org.sova.components.CareCouncilPanel
 import org.sova.components.JournalCard
 import org.sova.components.JournalLabel
 import org.sova.components.SecondaryButton
+import org.sova.data.SpecialistApi
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.model.Agent
 import org.sova.model.AgentDeliberationState
 import org.sova.model.MedicalProfile
+import org.sova.model.Specialist
+import org.sova.model.SpecialistCallEvent
+import org.sova.model.SpecialistCallLine
+import org.sova.model.SpecialistCallState
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
 
@@ -61,14 +66,16 @@ fun AgentsScreen(
     medical: MedicalProfile,
     vitals: Vitals,
     deliberationState: AgentDeliberationState,
+    specialists: List<Specialist>,
     onRefreshDeliberation: () -> Unit,
     onConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var activeSpecialist by remember { mutableStateOf<String?>(null) }
+    var activeSpecialist by remember { mutableStateOf<Specialist?>(null) }
 
     activeSpecialist?.let { specialist ->
         SpecialistCallView(
+            user = user,
             specialist = specialist,
             onBack = { activeSpecialist = null },
             modifier = modifier,
@@ -80,6 +87,7 @@ fun AgentsScreen(
         if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
             AgentsWide(
                 deliberationState = deliberationState,
+                specialists = specialists,
                 onRetry = onRefreshDeliberation,
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -87,6 +95,7 @@ fun AgentsScreen(
         } else {
             AgentsCompact(
                 deliberationState = deliberationState,
+                specialists = specialists,
                 onRetry = onRefreshDeliberation,
                 onSpecialistSelected = { activeSpecialist = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -98,15 +107,16 @@ fun AgentsScreen(
 @Composable
 private fun AgentsCompact(
     deliberationState: AgentDeliberationState,
+    specialists: List<Specialist>,
     onRetry: () -> Unit,
-    onSpecialistSelected: (String) -> Unit,
+    onSpecialistSelected: (Specialist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
             AiCareHeader()
         }
-        item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
+        item { CareCouncilPanel(specialists = specialists, onSpecialistSelected = onSpecialistSelected) }
         item { DeliberationSection(deliberationState, onRetry, onRetry) }
     }
 }
@@ -114,13 +124,14 @@ private fun AgentsCompact(
 @Composable
 private fun AgentsWide(
     deliberationState: AgentDeliberationState,
+    specialists: List<Specialist>,
     onRetry: () -> Unit,
-    onSpecialistSelected: (String) -> Unit,
+    onSpecialistSelected: (Specialist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item { AiCareHeader() }
-        item { CareCouncilPanel(onSpecialistSelected = onSpecialistSelected) }
+        item { CareCouncilPanel(specialists = specialists, onSpecialistSelected = onSpecialistSelected) }
         item { DeliberationSection(state = deliberationState, onRetry = onRetry, onRefresh = onRetry) }
     }
 }
@@ -185,13 +196,14 @@ private fun DeliberationStandbyCard(modifier: Modifier = Modifier) {
 
 @Composable
 fun SpecialistCallView(
-    specialist: String,
+    user: UserProfile,
+    specialist: Specialist,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var connected by remember(specialist) { mutableStateOf(false) }
-    var muted by remember(specialist) { mutableStateOf(false) }
-    var microphoneAccess by remember(specialist) { mutableStateOf<MicrophoneAccessState?>(null) }
+    var muted by remember(specialist.id) { mutableStateOf(false) }
+    var microphoneAccess by remember(specialist.id) { mutableStateOf<MicrophoneAccessState?>(null) }
+    var callState by remember(specialist.id) { mutableStateOf<SpecialistCallState>(SpecialistCallState.Connecting) }
     val coroutineScope = rememberCoroutineScope()
     fun requestMicrophone() {
         coroutineScope.launch {
@@ -200,10 +212,42 @@ fun SpecialistCallView(
         }
     }
 
-    LaunchedEffect(specialist) {
-        requestMicrophone()
-        delay(3000)
-        connected = true
+    LaunchedEffect(user.patientId, specialist.id) {
+        microphoneAccess = MicrophoneAccess.request()
+        muted = microphoneAccess != MicrophoneAccessState.Granted
+        callState = SpecialistCallState.Connecting
+        runCatching {
+            val session = SpecialistApi.startCall(user.patientId, specialist.id)
+            SpecialistApi.observeCall(
+                session = session,
+                microphoneChunks = SpecialistCallAudio.microphoneChunks(),
+                muted = { muted || microphoneAccess != MicrophoneAccessState.Granted },
+            ).collect { event ->
+                when (event) {
+                    is SpecialistCallEvent.Started -> {
+                        callState = SpecialistCallState.Connected()
+                    }
+                    is SpecialistCallEvent.Caption -> {
+                        val existing = (callState as? SpecialistCallState.Connected)?.lines.orEmpty()
+                        callState = SpecialistCallState.Connected(lines = existing + event.line)
+                    }
+                    is SpecialistCallEvent.Audio -> {
+                        SpecialistCallAudio.playAgentAudio(event.audioBase64, event.format)
+                    }
+                    is SpecialistCallEvent.Error -> {
+                        val existing = callState as? SpecialistCallState.Connected
+                        callState = if (existing != null) {
+                            existing.copy(error = event.message)
+                        } else {
+                            SpecialistCallState.Failed(event.message)
+                        }
+                    }
+                    SpecialistCallEvent.Ended -> callState = SpecialistCallState.Ended
+                }
+            }
+        }.onFailure {
+            callState = SpecialistCallState.Failed(it.message ?: "Specialist call is unavailable.")
+        }
     }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
@@ -212,6 +256,7 @@ fun SpecialistCallView(
         }
         item {
             BoxWithConstraints {
+                val connected = callState is SpecialistCallState.Connected || callState is SpecialistCallState.Ended
                 if (connected) {
                     if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
                         Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
@@ -229,7 +274,7 @@ fun SpecialistCallView(
                                 onRequestMicrophone = ::requestMicrophone,
                                 modifier = Modifier.weight(0.80f),
                             )
-                            LiveCaptionCard(specialist, Modifier.weight(0.20f))
+                            LiveCaptionCard(callState, Modifier.weight(0.20f))
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
@@ -246,7 +291,7 @@ fun SpecialistCallView(
                                 },
                                 onRequestMicrophone = ::requestMicrophone,
                             )
-                            LiveCaptionCard(specialist)
+                            LiveCaptionCard(callState)
                         }
                     }
                 } else {
@@ -287,7 +332,7 @@ private fun CircularBackButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ConnectingCallCard(specialist: String, modifier: Modifier = Modifier) {
+private fun ConnectingCallCard(specialist: Specialist, modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "specialist-call-pulse")
     val pulse by transition.animateFloat(
         initialValue = 0.86f,
@@ -322,7 +367,7 @@ private fun ConnectingCallCard(specialist: String, modifier: Modifier = Modifier
                 )
                 SpecialistAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Md)
             }
-            Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+            Text(specialist.name, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
             JournalLabel("Ringing secure line", color = HealthColors.Accent)
             Text("Waiting for the AI care specialist to join.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
         }
@@ -331,7 +376,7 @@ private fun ConnectingCallCard(specialist: String, modifier: Modifier = Modifier
 
 @Composable
 private fun ConnectedCallCard(
-    specialist: String,
+    specialist: Specialist,
     muted: Boolean,
     microphoneAccess: MicrophoneAccessState?,
     onToggleMute: () -> Unit,
@@ -346,7 +391,7 @@ private fun ConnectedCallCard(
             verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
         ) {
             SpecialistAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Lg)
-            Text(specialist, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+            Text(specialist.name, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
             JournalLabel("AI care specialist connected", color = HealthColors.Success)
             Text("Secure voice check-in in progress.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
             MuteToggleButton(
@@ -448,14 +493,14 @@ private fun MuteToggleButton(muted: Boolean, enabled: Boolean, onClick: () -> Un
 }
 
 @Composable
-private fun SpecialistAvatar(specialist: String, size: androidx.compose.ui.unit.Dp) {
+private fun SpecialistAvatar(specialist: Specialist, size: androidx.compose.ui.unit.Dp) {
     Box(
         modifier = Modifier
             .size(size)
             .background(HealthColors.AccentSoft, HealthShapes.Pill),
         contentAlignment = Alignment.Center,
     ) {
-        Text(specialist.initials(), color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
+        Text(specialist.initials, color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -469,56 +514,50 @@ private fun WaitingCaptionCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun LiveCaptionCard(specialist: String, modifier: Modifier = Modifier) {
+private fun LiveCaptionCard(state: SpecialistCallState, modifier: Modifier = Modifier) {
     JournalCard(modifier = modifier) {
         JournalLabel("Live captions")
-        liveCaptionsFor(specialist).forEach {
-            Text(it, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        when (state) {
+            SpecialistCallState.Connecting -> Text("Connecting...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            SpecialistCallState.Ended -> Text("Call ended.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            is SpecialistCallState.Failed -> Text(state.message, color = HealthColors.Danger, style = MaterialTheme.typography.bodyLarge)
+            is SpecialistCallState.Connected -> {
+                if (state.lines.isEmpty()) {
+                    Text("Listening for the specialist.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                } else {
+                    state.lines.forEach { line ->
+                        CaptionLine(line)
+                    }
+                }
+                state.error?.let {
+                    Text(it, color = HealthColors.Danger, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
         }
     }
 }
 
-private fun String.initials(): String =
-    split(" ")
-        .filter { it.isNotBlank() }
-        .takeLast(2)
-        .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
-        .joinToString("")
-        .take(2)
-
-private fun liveCaptionsFor(specialist: String): List<String> =
-    when {
-        specialist.contains("Caregiver Outreach") -> listOf(
-            "Sova: I’m preparing a concise caregiver handoff with current vitals and risk context.",
-            "Sova: Oxygen is low and medication was missed. This needs human follow-up.",
-            "Sova: Calling the saved caregiver contact now.",
-            "Sova: I’ll keep the summary focused on what changed and what action is needed.",
-        )
-        specialist.contains("Cardio") -> listOf(
-            "$specialist: I’m reviewing your heart rate and rhythm trends now.",
-            "Patient: I don’t feel chest pain. My breathing feels normal.",
-            "$specialist: Good. Your current heart rate remains inside the expected recovery range.",
-            "$specialist: I recommend continued monitoring and hydration. Escalate if chest discomfort appears.",
-        )
-        specialist.contains("Pharma") -> listOf(
-            "$specialist: I’m checking medication timing and interaction risk.",
-            "Patient: I took the scheduled dose this morning.",
-            "$specialist: Adherence looks complete. No timing conflict is visible right now.",
-            "$specialist: Continue the current schedule unless your clinician changes the plan.",
-        )
-        specialist.contains("Behavioral") -> listOf(
-            "$specialist: I’m checking sleep, stress, and daily barriers.",
-            "Patient: Sleep was better, but I still feel tired.",
-            "$specialist: That can fit the recovery pattern. Keep activity light and predictable today.",
-            "$specialist: I’ll note fatigue without escalation because oxygen and heart signals are stable.",
-        )
-        else -> listOf(
-            "$specialist: I’m here. Tell me what changed since your last check-in.",
-            "Patient: I feel steady and took medication on time.",
-            "$specialist: Your signals support continued passive monitoring.",
-            "$specialist: Recommended action: hydrate, rest, and check back if symptoms change.",
-        )
+@Composable
+private fun CaptionLine(line: SpecialistCallLine) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (line.fromPatient) Arrangement.End else Arrangement.Start,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(if (line.fromPatient) 0.88f else 0.96f)
+                .background(
+                    if (line.fromPatient) HealthColors.AccentSoft else HealthColors.SurfaceSubtle,
+                    HealthShapes.SmallCard,
+                )
+                .padding(HealthSpacing.Xs),
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2),
+        ) {
+            JournalLabel(line.speaker)
+            Text(line.text, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+        }
     }
+}
 
 @Composable
 private fun AiCareHeader() {

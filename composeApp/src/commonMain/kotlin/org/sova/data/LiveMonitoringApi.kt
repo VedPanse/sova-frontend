@@ -22,6 +22,7 @@ data class LiveMonitoringStatusPayload(
     val escalation: LiveMonitoringEscalationPayload = LiveMonitoringEscalationPayload(),
     val deliberation: LiveMonitoringDeliberationPayload = LiveMonitoringDeliberationPayload(),
     val trajectory: List<LiveMonitoringTrajectoryPointPayload> = emptyList(),
+    val notification: LiveMonitoringNotificationPayload? = null,
 ) {
     fun toSimulationResult(): SimulationResult {
         val risk = riskLevel.toRiskLevel()
@@ -83,6 +84,15 @@ data class LiveMonitoringDeliberationPayload(
     val triggered: Boolean = false,
     val status: String = "idle",
     val streamUrl: String? = null,
+)
+
+@Serializable
+data class LiveMonitoringNotificationPayload(
+    val type: String,
+    val title: String,
+    val message: String,
+    val requiresResponse: Boolean = false,
+    val actions: List<String> = emptyList(),
 )
 
 @Serializable
