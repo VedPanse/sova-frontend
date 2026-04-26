@@ -124,7 +124,7 @@ fun AppNavigation() {
                 monitoringStatus = status
                 vitals = status.vitals.toVitals()
             }
-            delay(5_000)
+            delay(2_000)
         }
     }
 
