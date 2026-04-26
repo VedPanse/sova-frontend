@@ -74,6 +74,7 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(libs.ktor.client.java)
+            runtimeOnly(libs.slf4j.simple)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

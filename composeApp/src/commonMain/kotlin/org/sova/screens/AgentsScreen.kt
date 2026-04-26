@@ -201,6 +201,7 @@ fun SpecialistCallView(
     }
 
     LaunchedEffect(specialist) {
+        requestMicrophone()
         delay(3000)
         connected = true
     }
@@ -353,7 +354,7 @@ private fun ConnectedCallCard(
                 enabled = true,
                 onClick = onToggleMute,
             )
-            if (microphoneAccess != MicrophoneAccessState.Granted) {
+            if (microphoneAccess == null || microphoneAccess == MicrophoneAccessState.Denied) {
                 SecondaryButton(
                     text = if (microphoneAccess == MicrophoneAccessState.Denied) "Try microphone again" else "Enable microphone",
                     onClick = onRequestMicrophone,

@@ -21,5 +21,6 @@ dependencies {
     implementation(libs.ktor.server.statusPages)
     implementation(libs.ktor.client.json)
     implementation(libs.google.cloud.bigquery)
+    runtimeOnly(libs.slf4j.simple)
     testImplementation(libs.kotlin.test)
 }

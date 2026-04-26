@@ -33,6 +33,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.Json
+import java.net.BindException
 import java.nio.channels.Channels
 import java.nio.file.Files
 import java.nio.file.Path
@@ -49,9 +50,27 @@ private val LocalBigQueryCredentialsPaths: List<Path> = listOf(
 private val ServerJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
 fun main() {
-    embeddedServer(Netty, port = System.getenv("PORT")?.toIntOrNull() ?: 8080) {
-        patientProfileModule()
-    }.start(wait = true)
+    val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
+    try {
+        embeddedServer(Netty, port = port) {
+            patientProfileModule()
+        }.start(wait = true)
+    } catch (cause: Throwable) {
+        if (cause.hasBindException()) {
+            serverLogger.warning("Sova local profile server is already running on port $port; continuing without starting another instance.")
+            return
+        }
+        throw cause
+    }
+}
+
+private fun Throwable.hasBindException(): Boolean {
+    var current: Throwable? = this
+    while (current != null) {
+        if (current is BindException) return true
+        current = current.cause
+    }
+    return false
 }
 
 fun Application.patientProfileModule() {
