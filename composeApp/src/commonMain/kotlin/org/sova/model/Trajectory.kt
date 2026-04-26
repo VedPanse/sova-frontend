@@ -10,6 +10,7 @@ data class TrajectoryPoint(
     val label: String,
     val riskLevel: RiskLevel,
     val riskScore: Int,
+    val hoursFromNow: Double? = null,
 )
 
 data class Trajectory(

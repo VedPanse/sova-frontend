@@ -69,12 +69,11 @@ fun PatientTrajectoryGraph(
                     )
                 }
 
+                val maxHours = points.mapNotNull { it.hoursFromNow }.maxOrNull()?.takeIf { it > 0.0 } ?: 6.0
                 val plotted = points.mapIndexed { index, point ->
-                    val x = if (points.size == 1) {
-                        left
-                    } else {
-                        left + graphWidth * (index.toFloat() / (points.lastIndex.toFloat()))
-                    }
+                    val xProgress = point.hoursFromNow?.let { (it / maxHours).toFloat().coerceIn(0f, 1f) }
+                        ?: if (points.size == 1) 0f else index.toFloat() / points.lastIndex.toFloat()
+                    val x = left + graphWidth * xProgress
                     Offset(x, riskScoreY(point.riskScore, top, graphHeight))
                 }
 

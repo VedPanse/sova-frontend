@@ -21,6 +21,7 @@ data class LiveMonitoringStatusPayload(
     val recommendedAction: String = "Continue monitoring",
     val escalation: LiveMonitoringEscalationPayload = LiveMonitoringEscalationPayload(),
     val deliberation: LiveMonitoringDeliberationPayload = LiveMonitoringDeliberationPayload(),
+    val trajectory: List<LiveMonitoringTrajectoryPointPayload> = emptyList(),
 ) {
     fun toSimulationResult(): SimulationResult {
         val risk = riskLevel.toRiskLevel()
@@ -44,13 +45,7 @@ data class LiveMonitoringStatusPayload(
             summary = summary,
             reasons = reasons,
             recommendation = recommendedAction,
-            trajectory = Trajectory(
-                points = listOf(
-                    TrajectoryPoint("Now", risk, baseScore),
-                    TrajectoryPoint("2h", risk.projectedRisk(1), (baseScore + risk.projectionDelta(1)).coerceIn(0, 100)),
-                    TrajectoryPoint("6h", risk.projectedRisk(2), (baseScore + risk.projectionDelta(2)).coerceIn(0, 100)),
-                ),
-            ),
+            trajectory = trajectory.toTrajectory(risk, baseScore),
         )
     }
 }
@@ -88,6 +83,14 @@ data class LiveMonitoringDeliberationPayload(
     val triggered: Boolean = false,
     val status: String = "idle",
     val streamUrl: String? = null,
+)
+
+@Serializable
+data class LiveMonitoringTrajectoryPointPayload(
+    val label: String,
+    val hoursFromNow: Double,
+    val riskLevel: String,
+    val riskScore: Int,
 )
 
 object LiveMonitoringApi {
@@ -144,3 +147,29 @@ private fun RiskLevel.projectionDelta(step: Int): Int =
         RiskLevel.Moderate -> 8 * step
         RiskLevel.Low -> 0
     }
+
+private fun List<LiveMonitoringTrajectoryPointPayload>.toTrajectory(
+    fallbackRisk: RiskLevel,
+    fallbackScore: Int,
+): Trajectory {
+    if (isNotEmpty()) {
+        return Trajectory(
+            points = sortedBy { it.hoursFromNow }.map {
+                TrajectoryPoint(
+                    label = it.label,
+                    riskLevel = it.riskLevel.toRiskLevel(),
+                    riskScore = it.riskScore.coerceIn(0, 100),
+                    hoursFromNow = it.hoursFromNow,
+                )
+            },
+        )
+    }
+
+    return Trajectory(
+        points = listOf(
+            TrajectoryPoint("Now", fallbackRisk, fallbackScore, 0.0),
+            TrajectoryPoint("2h", fallbackRisk.projectedRisk(1), (fallbackScore + fallbackRisk.projectionDelta(1)).coerceIn(0, 100), 2.0),
+            TrajectoryPoint("6h", fallbackRisk.projectedRisk(2), (fallbackScore + fallbackRisk.projectionDelta(2)).coerceIn(0, 100), 6.0),
+        ),
+    )
+}
