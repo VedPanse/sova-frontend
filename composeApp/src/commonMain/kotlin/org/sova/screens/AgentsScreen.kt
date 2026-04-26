@@ -133,7 +133,7 @@ private fun DeliberationSection(
     modifier: Modifier = Modifier,
 ) {
     when (state) {
-        AgentDeliberationState.Idle,
+        AgentDeliberationState.Idle -> DeliberationStandbyCard(modifier)
         AgentDeliberationState.Starting -> AgentDeliberationPanel(
             messages = emptyList(),
             modifier = modifier,
@@ -161,6 +161,25 @@ private fun DeliberationSection(
             errorText = state.message,
             onRetry = if (state.canRetry) onRetry else null,
         )
+    }
+}
+
+@Composable
+private fun DeliberationStandbyCard(modifier: Modifier = Modifier) {
+    JournalCard(modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm)) {
+            JournalLabel("Live deliberation")
+            Text(
+                "If your condition deteriorates, Sova will ask AI specialist doctors to debate the safest next step.",
+                color = HealthColors.TextPrimary,
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                "For now, no council is needed.",
+                color = HealthColors.TextSecondary,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
     }
 }
 

@@ -146,7 +146,13 @@ fun AppNavigation() {
             backendDeliberation?.triggered == true && !backendDeliberation.streamUrl.isNullOrBlank() ->
                 "${user.patientId}:${backendDeliberation.streamUrl}"
             else -> null
-        } ?: return@LaunchedEffect
+        } ?: run {
+            if (!manualRefresh && deliberationState !is AgentDeliberationState.Idle) {
+                deliberationState = AgentDeliberationState.Idle
+                observedDeliberationKey = null
+            }
+            return@LaunchedEffect
+        }
         if (observedDeliberationKey == streamKey) return@LaunchedEffect
         observedDeliberationKey = streamKey
 
