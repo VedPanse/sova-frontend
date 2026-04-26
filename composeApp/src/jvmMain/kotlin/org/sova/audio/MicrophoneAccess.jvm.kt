@@ -4,21 +4,28 @@ import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.DataLine
 import javax.sound.sampled.TargetDataLine
+import org.sova.logging.SovaLogger
 
 actual object MicrophoneAccess {
     actual suspend fun request(): MicrophoneAccessState =
         runCatching {
+            SovaLogger.event(subsystem = "mic", event = "desktop-line-probe-start")
             openMicrophoneLine()?.use { line ->
-                val buffer = ByteArray(line.bufferSize.coerceAtMost(512).coerceAtLeast(64))
-                line.start()
-                line.read(buffer, 0, buffer.size)
-                line.stop()
+                SovaLogger.event(
+                    subsystem = "mic",
+                    event = "desktop-line-probe-success",
+                    details = mapOf("format" to line.format.toString()),
+                )
                 return@runCatching MicrophoneAccessState.Granted
             }
-            println("Sova microphone: no supported desktop microphone input line was found.")
+            SovaLogger.event(subsystem = "mic", event = "desktop-line-probe-unavailable")
             MicrophoneAccessState.Unavailable
         }.getOrElse {
-            println("Sova microphone: desktop microphone request failed: ${it.message ?: it::class.simpleName}")
+            SovaLogger.event(
+                subsystem = "mic",
+                event = "desktop-line-probe-failed",
+                details = mapOf("error" to (it.message ?: it::class.simpleName)),
+            )
             MicrophoneAccessState.Denied
         }
 }
@@ -46,7 +53,15 @@ private fun openMicrophoneLine(): TargetDataLine? {
                     return line
                 }.onFailure {
                     val mixerName = mixer?.mixerInfo?.name ?: "default mixer"
-                    println("Sova microphone: $mixerName supports ${format.sampleRate.toInt()}Hz input but could not open it: ${it.message ?: it::class.simpleName}")
+                    SovaLogger.event(
+                        subsystem = "mic",
+                        event = "desktop-line-open-failed",
+                        details = mapOf(
+                            "mixer" to mixerName,
+                            "sampleRate" to format.sampleRate.toInt().toString(),
+                            "error" to (it.message ?: it::class.simpleName),
+                        ),
+                    )
                 }
             }
         }

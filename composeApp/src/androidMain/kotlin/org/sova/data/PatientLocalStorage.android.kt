@@ -21,6 +21,10 @@ actual object PatientLocalStorage {
         if (AndroidOnboardingStorageContext.isInitialized()) prefs().edit().putString(PatientIdKey, value).apply()
     }
 
+    actual fun clearPatientId() {
+        if (AndroidOnboardingStorageContext.isInitialized()) prefs().edit().remove(PatientIdKey).apply()
+    }
+
     actual fun readDraft(): String? =
         if (AndroidOnboardingStorageContext.isInitialized()) prefs().getString(DraftKey, null) else null
 

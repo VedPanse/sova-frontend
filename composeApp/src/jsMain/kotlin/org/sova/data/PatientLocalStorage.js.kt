@@ -13,6 +13,10 @@ actual object PatientLocalStorage {
         runCatching { window.localStorage.setItem(PatientIdKey, value) }
     }
 
+    actual fun clearPatientId() {
+        runCatching { window.localStorage.removeItem(PatientIdKey) }
+    }
+
     actual fun readDraft(): String? =
         runCatching { window.localStorage.getItem(DraftKey) }.getOrNull()
 

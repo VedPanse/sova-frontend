@@ -36,7 +36,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.sova.audio.MicrophoneAccess
 import org.sova.audio.MicrophoneAccessState
 import org.sova.audio.SpecialistCallAudio
@@ -49,15 +53,24 @@ import org.sova.data.SpecialistApi
 import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
+import org.sova.logging.SovaLogger
 import org.sova.model.Agent
 import org.sova.model.AgentDeliberationState
 import org.sova.model.MedicalProfile
 import org.sova.model.Specialist
 import org.sova.model.SpecialistCallEvent
-import org.sova.model.SpecialistCallLine
 import org.sova.model.SpecialistCallState
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
+
+private data class SpecialistCallDebugState(
+    val phase: String = "idle",
+    val sessionId: String? = null,
+    val socket: String = "not opened",
+    val mic: String = "not requested",
+    val lastEvent: String = "none",
+    val lastError: String? = null,
+)
 
 @Composable
 fun AgentsScreen(
@@ -77,7 +90,15 @@ fun AgentsScreen(
         SpecialistCallView(
             user = user,
             specialist = specialist,
-            onBack = { activeSpecialist = null },
+            onBack = {
+                SovaLogger.event(
+                    subsystem = "ui",
+                    event = "specialist-call-back",
+                    patientId = user.patientId,
+                    specialistId = specialist.id,
+                )
+                activeSpecialist = null
+            },
             modifier = modifier,
         )
         return
@@ -89,7 +110,16 @@ fun AgentsScreen(
                 deliberationState = deliberationState,
                 specialists = specialists,
                 onRetry = onRefreshDeliberation,
-                onSpecialistSelected = { activeSpecialist = it },
+                onSpecialistSelected = {
+                    SovaLogger.event(
+                        subsystem = "ui",
+                        event = "specialist-card-tapped",
+                        patientId = user.patientId,
+                        specialistId = it.id,
+                        details = mapOf("name" to it.name),
+                    )
+                    activeSpecialist = it
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
@@ -97,7 +127,16 @@ fun AgentsScreen(
                 deliberationState = deliberationState,
                 specialists = specialists,
                 onRetry = onRefreshDeliberation,
-                onSpecialistSelected = { activeSpecialist = it },
+                onSpecialistSelected = {
+                    SovaLogger.event(
+                        subsystem = "ui",
+                        event = "specialist-card-tapped",
+                        patientId = user.patientId,
+                        specialistId = it.id,
+                        details = mapOf("name" to it.name),
+                    )
+                    activeSpecialist = it
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -204,49 +243,204 @@ fun SpecialistCallView(
     var muted by remember(specialist.id) { mutableStateOf(false) }
     var microphoneAccess by remember(specialist.id) { mutableStateOf<MicrophoneAccessState?>(null) }
     var callState by remember(specialist.id) { mutableStateOf<SpecialistCallState>(SpecialistCallState.Connecting) }
+    var debugState by remember(specialist.id) { mutableStateOf(SpecialistCallDebugState(phase = "opening call")) }
     val coroutineScope = rememberCoroutineScope()
     fun requestMicrophone() {
         coroutineScope.launch {
-            microphoneAccess = MicrophoneAccess.request()
+            SovaLogger.event(
+                subsystem = "mic",
+                event = "permission-request-start",
+                patientId = user.patientId,
+                specialistId = specialist.id,
+            )
+            debugState = debugState.copy(mic = "requesting")
+            microphoneAccess = withContext(Dispatchers.Default) {
+                MicrophoneAccess.request()
+            }
             muted = microphoneAccess != MicrophoneAccessState.Granted
+            debugState = debugState.copy(mic = microphoneAccess.toDebugMicStatus(muted))
+            SovaLogger.event(
+                subsystem = "mic",
+                event = "permission-request-result",
+                patientId = user.patientId,
+                specialistId = specialist.id,
+                details = mapOf("state" to microphoneAccess.toString(), "muted" to muted.toString()),
+            )
+        }
+    }
+
+    LaunchedEffect(user.patientId, specialist.id, callState) {
+        if (callState !is SpecialistCallState.Connecting) return@LaunchedEffect
+        delay(15_000)
+        if (callState is SpecialistCallState.Connecting) {
+            SovaLogger.event(
+                subsystem = "specialist-call",
+                event = "connect-timeout",
+                patientId = user.patientId,
+                specialistId = specialist.id,
+            )
+            debugState = debugState.copy(phase = "failed", lastError = "The specialist did not join within 15s.")
+            callState = SpecialistCallState.Failed("The specialist did not join. Check the backend service and try again.")
         }
     }
 
     LaunchedEffect(user.patientId, specialist.id) {
-        microphoneAccess = MicrophoneAccess.request()
-        muted = microphoneAccess != MicrophoneAccessState.Granted
+        SovaLogger.event(
+            subsystem = "ui",
+            event = "specialist-call-screen-opened",
+            patientId = user.patientId,
+            specialistId = specialist.id,
+            details = mapOf("name" to specialist.name),
+        )
         callState = SpecialistCallState.Connecting
+        debugState = SpecialistCallDebugState(phase = "starting session", mic = "not requested")
         runCatching {
-            val session = SpecialistApi.startCall(user.patientId, specialist.id)
+            val session = withTimeout(12_000) {
+                SpecialistApi.startCall(user.patientId, specialist.id)
+            }
+            debugState = debugState.copy(
+                phase = "opening socket",
+                sessionId = session.sessionId,
+                socket = "connecting",
+                lastEvent = "session created",
+            )
+            callState = SpecialistCallState.Connected()
+            SovaLogger.event(
+                subsystem = "specialist-call",
+                event = "state-connected-after-session",
+                patientId = user.patientId,
+                specialistId = specialist.id,
+                sessionId = session.sessionId,
+            )
+            launch {
+                SovaLogger.event(
+                    subsystem = "mic",
+                    event = "permission-request-start",
+                    patientId = user.patientId,
+                    specialistId = specialist.id,
+                    sessionId = session.sessionId,
+                )
+                debugState = debugState.copy(mic = "requesting")
+                microphoneAccess = withContext(Dispatchers.Default) {
+                    MicrophoneAccess.request()
+                }
+                muted = microphoneAccess != MicrophoneAccessState.Granted
+                debugState = debugState.copy(mic = microphoneAccess.toDebugMicStatus(muted))
+                SovaLogger.event(
+                    subsystem = "mic",
+                    event = "permission-request-result",
+                    patientId = user.patientId,
+                    specialistId = specialist.id,
+                    sessionId = session.sessionId,
+                    details = mapOf("state" to microphoneAccess.toString(), "muted" to muted.toString()),
+                )
+            }
             SpecialistApi.observeCall(
                 session = session,
                 microphoneChunks = SpecialistCallAudio.microphoneChunks(),
                 muted = { muted || microphoneAccess != MicrophoneAccessState.Granted },
             ).collect { event ->
+                debugState = debugState.copy(
+                    phase = "streaming",
+                    socket = "open",
+                    lastEvent = event.debugName(),
+                )
                 when (event) {
                     is SpecialistCallEvent.Started -> {
-                        callState = SpecialistCallState.Connected()
+                        val existing = callState as? SpecialistCallState.Connected
+                        callState = existing ?: SpecialistCallState.Connected()
+                        SovaLogger.event(
+                            subsystem = "specialist-call",
+                            event = "state-started",
+                            patientId = user.patientId,
+                            specialistId = specialist.id,
+                            sessionId = session.sessionId,
+                        )
                     }
                     is SpecialistCallEvent.Caption -> {
                         val existing = (callState as? SpecialistCallState.Connected)?.lines.orEmpty()
                         callState = SpecialistCallState.Connected(lines = existing + event.line)
+                        SovaLogger.event(
+                            subsystem = "specialist-call",
+                            event = "caption-rendered",
+                            patientId = user.patientId,
+                            specialistId = specialist.id,
+                            sessionId = session.sessionId,
+                            details = mapOf(
+                                "speaker" to event.line.speaker,
+                                "fromPatient" to event.line.fromPatient.toString(),
+                                "textChars" to event.line.text.length.toString(),
+                            ),
+                        )
+                        if (!event.line.fromPatient) {
+                            debugState = debugState.copy(lastEvent = "agent transcript received; waiting for audio")
+                            SovaLogger.event(
+                                subsystem = "specialist-call",
+                                event = "agent-audio-missing-pending",
+                                patientId = user.patientId,
+                                specialistId = specialist.id,
+                                sessionId = session.sessionId,
+                                details = mapOf("speaker" to event.line.speaker, "textChars" to event.line.text.length.toString()),
+                            )
+                        }
                     }
                     is SpecialistCallEvent.Audio -> {
+                        SovaLogger.event(
+                            subsystem = "specialist-call",
+                            event = "agent-audio-received",
+                            patientId = user.patientId,
+                            specialistId = specialist.id,
+                            sessionId = session.sessionId,
+                            details = mapOf("format" to event.format, "base64Chars" to event.audioBase64.length.toString()),
+                        )
                         SpecialistCallAudio.playAgentAudio(event.audioBase64, event.format)
                     }
                     is SpecialistCallEvent.Error -> {
                         val existing = callState as? SpecialistCallState.Connected
+                        debugState = debugState.copy(lastError = event.message)
                         callState = if (existing != null) {
                             existing.copy(error = event.message)
                         } else {
-                            SpecialistCallState.Failed(event.message)
+                            SpecialistCallState.Connected(error = event.message)
                         }
+                        SovaLogger.event(
+                            subsystem = "specialist-call",
+                            event = "state-error",
+                            patientId = user.patientId,
+                            specialistId = specialist.id,
+                            sessionId = session.sessionId,
+                            details = mapOf("error" to event.message),
+                        )
                     }
-                    SpecialistCallEvent.Ended -> callState = SpecialistCallState.Ended
+                    SpecialistCallEvent.Ended -> {
+                        debugState = debugState.copy(phase = "ended")
+                        callState = SpecialistCallState.Ended
+                        SovaLogger.event(
+                            subsystem = "specialist-call",
+                            event = "state-ended",
+                            patientId = user.patientId,
+                            specialistId = specialist.id,
+                            sessionId = session.sessionId,
+                        )
+                    }
                 }
             }
         }.onFailure {
-            callState = SpecialistCallState.Failed(it.message ?: "Specialist call is unavailable.")
+            val existing = callState as? SpecialistCallState.Connected
+            val error = it.message ?: it::class.simpleName ?: "Unknown error"
+            debugState = debugState.copy(phase = "failed", lastError = error)
+            SovaLogger.event(
+                subsystem = "specialist-call",
+                event = "call-flow-failed",
+                patientId = user.patientId,
+                specialistId = specialist.id,
+                details = mapOf("error" to error),
+            )
+            callState = if (existing != null) {
+                existing.copy(error = error)
+            } else {
+                SpecialistCallState.Failed(error)
+            }
         }
     }
 
@@ -257,57 +451,61 @@ fun SpecialistCallView(
         item {
             BoxWithConstraints {
                 val connected = callState is SpecialistCallState.Connected || callState is SpecialistCallState.Ended
+                val failed = callState is SpecialistCallState.Failed
                 if (connected) {
-                    if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                            ConnectedCallCard(
-                                specialist = specialist,
-                                muted = muted,
-                                microphoneAccess = microphoneAccess,
-                                onToggleMute = {
-                                    if (microphoneAccess == MicrophoneAccessState.Granted) {
-                                        muted = !muted
-                                    } else {
-                                        requestMicrophone()
-                                    }
-                                },
-                                onRequestMicrophone = ::requestMicrophone,
-                                modifier = Modifier.weight(0.80f),
-                            )
-                            LiveCaptionCard(callState, Modifier.weight(0.20f))
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                            ConnectedCallCard(
-                                specialist = specialist,
-                                muted = muted,
-                                microphoneAccess = microphoneAccess,
-                                onToggleMute = {
-                                    if (microphoneAccess == MicrophoneAccessState.Granted) {
-                                        muted = !muted
-                                    } else {
-                                        requestMicrophone()
-                                    }
-                                },
-                                onRequestMicrophone = ::requestMicrophone,
-                            )
-                            LiveCaptionCard(callState)
-                        }
-                    }
+                    ConnectedCallCard(
+                        specialist = specialist,
+                        muted = muted,
+                        microphoneAccess = microphoneAccess,
+                        onToggleMute = {
+                            if (microphoneAccess == MicrophoneAccessState.Granted) {
+                                muted = !muted
+                            } else {
+                                requestMicrophone()
+                            }
+                        },
+                        onRequestMicrophone = ::requestMicrophone,
+                    )
+                } else if (failed) {
+                    FailedCallCard(specialist, callState as SpecialistCallState.Failed)
                 } else {
-                    if (maxWidth >= HealthSpacing.DesktopBreakpoint) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(HealthSpacing.Md), verticalAlignment = Alignment.Top) {
-                            ConnectingCallCard(specialist, Modifier.weight(0.80f))
-                            WaitingCaptionCard(Modifier.weight(0.20f))
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
-                            ConnectingCallCard(specialist)
-                            WaitingCaptionCard()
-                        }
-                    }
+                    ConnectingCallCard(specialist)
                 }
             }
+        }
+    }
+}
+
+private fun MicrophoneAccessState?.toDebugMicStatus(muted: Boolean): String =
+    when (this) {
+        MicrophoneAccessState.Granted -> if (muted) "granted, muted" else "granted, sending"
+        MicrophoneAccessState.Denied -> "denied"
+        MicrophoneAccessState.Unavailable -> "unavailable"
+        null -> "not requested"
+    }
+
+private fun SpecialistCallEvent.debugName(): String =
+    when (this) {
+        is SpecialistCallEvent.Audio -> "agent.audio"
+        SpecialistCallEvent.Ended -> "session.ended"
+        is SpecialistCallEvent.Error -> "session.error"
+        is SpecialistCallEvent.Caption -> if (line.fromPatient) "user.transcript.final" else "agent.transcript"
+        is SpecialistCallEvent.Started -> "session.started"
+    }
+
+@Composable
+private fun FailedCallCard(specialist: Specialist, state: SpecialistCallState.Failed, modifier: Modifier = Modifier) {
+    JournalCard(modifier = modifier) {
+        JournalLabel("Call unavailable", color = HealthColors.Danger)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Sm),
+        ) {
+            SpecialistAvatar(specialist, size = HealthSpacing.CouncilAvatar + HealthSpacing.Md)
+            Text(specialist.name, color = HealthColors.TextPrimary, style = MaterialTheme.typography.titleLarge)
+            Text(state.message, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+            Text("Go back and try the specialist again.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -501,61 +699,6 @@ private fun SpecialistAvatar(specialist: Specialist, size: androidx.compose.ui.u
         contentAlignment = Alignment.Center,
     ) {
         Text(specialist.initials, color = HealthColors.Ink, style = MaterialTheme.typography.titleLarge)
-    }
-}
-
-@Composable
-private fun WaitingCaptionCard(modifier: Modifier = Modifier) {
-    JournalCard(modifier = modifier) {
-        JournalLabel("Live captions")
-        Text("Connecting...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-        Text("Captions will appear here when the AI care specialist joins.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-private fun LiveCaptionCard(state: SpecialistCallState, modifier: Modifier = Modifier) {
-    JournalCard(modifier = modifier) {
-        JournalLabel("Live captions")
-        when (state) {
-            SpecialistCallState.Connecting -> Text("Connecting...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-            SpecialistCallState.Ended -> Text("Call ended.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-            is SpecialistCallState.Failed -> Text(state.message, color = HealthColors.Danger, style = MaterialTheme.typography.bodyLarge)
-            is SpecialistCallState.Connected -> {
-                if (state.lines.isEmpty()) {
-                    Text("Listening for the specialist.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-                } else {
-                    state.lines.forEach { line ->
-                        CaptionLine(line)
-                    }
-                }
-                state.error?.let {
-                    Text(it, color = HealthColors.Danger, style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CaptionLine(line: SpecialistCallLine) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (line.fromPatient) Arrangement.End else Arrangement.Start,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(if (line.fromPatient) 0.88f else 0.96f)
-                .background(
-                    if (line.fromPatient) HealthColors.AccentSoft else HealthColors.SurfaceSubtle,
-                    HealthShapes.SmallCard,
-                )
-                .padding(HealthSpacing.Xs),
-            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Xs / 2),
-        ) {
-            JournalLabel(line.speaker)
-            Text(line.text, color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-        }
     }
 }
 

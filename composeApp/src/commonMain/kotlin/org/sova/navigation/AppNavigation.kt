@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,6 +63,7 @@ import org.sova.model.SimulationResult
 import org.sova.model.Specialist
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
+import org.sova.notifications.SystemNotifier
 import org.sova.screens.AgentConversationScreen
 import org.sova.screens.AgentsScreen
 import org.sova.screens.DashboardScreen
@@ -74,7 +76,7 @@ import org.sova.screens.SimulationScreen
 
 @Composable
 fun AppNavigation() {
-    val patientId = remember { PatientProfilePersistence.patientId() }
+    var patientId by remember { mutableStateOf(PatientProfilePersistence.patientId()) }
     val coroutineScope = rememberCoroutineScope()
     var loaded by remember { mutableStateOf(false) }
     var onboarded by remember { mutableStateOf(false) }
@@ -89,6 +91,22 @@ fun AppNavigation() {
     var deliberationRefreshKey by remember { mutableStateOf(0) }
     var observedDeliberationKey by remember { mutableStateOf<String?>(null) }
     var specialists by remember { mutableStateOf<List<Specialist>>(fallbackSpecialists()) }
+    var lastSystemNotificationKey by remember { mutableStateOf<String?>(null) }
+
+    fun logOutToOnboarding() {
+        patientId = PatientProfilePersistence.resetPatient()
+        onboarded = false
+        route = AppRoute.Home
+        simulationRun = false
+        userProfile = null
+        medicalProfile = null
+        monitoringStatus = null
+        syncMessage = null
+        deliberationState = AgentDeliberationState.Idle
+        deliberationRefreshKey = 0
+        observedDeliberationKey = null
+        lastSystemNotificationKey = null
+    }
 
     LaunchedEffect(Unit) {
         specialists = SpecialistApi.specialists()
@@ -134,6 +152,21 @@ fun AppNavigation() {
             }
             delay(2_000)
         }
+    }
+
+    LaunchedEffect(
+        loaded,
+        onboarded,
+        monitoringStatus?.notification?.type,
+        monitoringStatus?.notification?.title,
+        monitoringStatus?.notification?.message,
+    ) {
+        if (!loaded || !onboarded) return@LaunchedEffect
+        val notification = monitoringStatus?.notification ?: return@LaunchedEffect
+        val key = listOf(notification.type, notification.title, notification.message).joinToString("|")
+        if (lastSystemNotificationKey == key) return@LaunchedEffect
+        lastSystemNotificationKey = key
+        SystemNotifier.show(notification.title, notification.message)
     }
 
     LaunchedEffect(
@@ -227,9 +260,7 @@ fun AppNavigation() {
     ) {
         val isWide = maxWidth >= HealthSpacing.DesktopBreakpoint
         if (!loaded) {
-            CenteredContent {
-                Text("Loading Sova...", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
-            }
+            LoadingSova()
         } else if (!onboarded) {
             Column(Modifier.fillMaxSize()) {
                 CenteredChrome {
@@ -291,6 +322,7 @@ fun AppNavigation() {
                                 }
                             }
                         },
+                        onLogout = ::logOutToOnboarding,
                         onRoute = { route = it },
                     ) {
                             simulationRun = true
@@ -328,6 +360,7 @@ fun AppNavigation() {
                                 }
                             }
                         },
+                        onLogout = ::logOutToOnboarding,
                         onRoute = { route = it },
                     ) {
                         simulationRun = true
@@ -338,6 +371,32 @@ fun AppNavigation() {
                     BottomNavigation(route = route, onRouteSelected = { route = it })
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LoadingSova() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(HealthColors.Background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(HealthSpacing.Xl),
+                color = HealthColors.Accent,
+                strokeWidth = HealthSpacing.Stroke,
+            )
+            Text(
+                "Loading Sova...",
+                color = HealthColors.TextSecondary,
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
     }
 }
@@ -354,6 +413,7 @@ private fun RouteContent(
     deliberationState: AgentDeliberationState,
     onRefreshDeliberation: () -> Unit,
     onProfileSave: (UserProfile, MedicalProfile) -> Unit,
+    onLogout: () -> Unit,
     onRoute: (AppRoute) -> Unit,
     onRunSimulation: () -> Unit,
 ) {
@@ -390,7 +450,7 @@ private fun RouteContent(
             modifier = Modifier.fillMaxSize(),
         )
         AppRoute.History -> HistoryScreen(DisplayContent.history, Modifier.fillMaxSize())
-        AppRoute.Profile -> ProfileScreen(user, medical, onSave = onProfileSave, modifier = Modifier.fillMaxSize())
+        AppRoute.Profile -> ProfileScreen(user, medical, onSave = onProfileSave, onLogout = onLogout, modifier = Modifier.fillMaxSize())
         AppRoute.Simulation -> SimulationScreen(user, simulationRun, simulation, onRunSimulation, Modifier.fillMaxSize())
         AppRoute.Conversation -> AgentConversationScreen(DisplayContent.conversation, simulation.recommendation, Modifier.fillMaxSize())
         AppRoute.RecommendedAction -> RecommendedActionScreen(simulation.recommendation, Modifier.fillMaxSize())

@@ -13,19 +13,24 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.sova.logging.SovaLogger
 import org.sova.model.Specialist
 import org.sova.model.SpecialistCallEvent
 import org.sova.model.SpecialistCallLine
 import org.sova.model.SpecialistCallSession
 import kotlin.random.Random
+import kotlin.time.TimeSource
 
 @Serializable
 private data class SpecialistCallStartRequest(
@@ -69,6 +74,14 @@ object SpecialistApi {
         }
 
     suspend fun startCall(patientId: String, specialistId: String): SpecialistCallSession {
+        val mark = TimeSource.Monotonic.markNow()
+        SovaLogger.event(
+            subsystem = "specialist-call",
+            event = "post-start-request",
+            patientId = patientId,
+            specialistId = specialistId,
+            details = mapOf("url" to "$HttpBaseUrl/v1/patients/$patientId/specialist-calls"),
+        )
         val response = client.post("$HttpBaseUrl/v1/patients/$patientId/specialist-calls") {
             contentType(ContentType.Application.Json)
             setBody(
@@ -78,6 +91,17 @@ object SpecialistApi {
                 ),
             )
         }.body<SpecialistCallStartResponse>()
+        SovaLogger.event(
+            subsystem = "specialist-call",
+            event = "post-start-success",
+            patientId = patientId,
+            specialistId = specialistId,
+            sessionId = response.sessionId,
+            details = mapOf(
+                "durationMs" to mark.elapsedNow().inWholeMilliseconds.toString(),
+                "websocketUrl" to response.websocketUrl,
+            ),
+        )
         return SpecialistCallSession(response.sessionId, response.websocketUrl)
     }
 
@@ -86,73 +110,219 @@ object SpecialistApi {
         microphoneChunks: Flow<String>,
         muted: () -> Boolean,
     ): Flow<SpecialistCallEvent> = flow {
+        val socketUrl = "$WsBaseUrl${session.websocketUrl}"
+        SovaLogger.event(
+            subsystem = "websocket",
+            event = "connect-attempt",
+            sessionId = session.sessionId,
+            details = mapOf("url" to socketUrl),
+        )
         client.webSocket("$WsBaseUrl${session.websocketUrl}") {
+            SovaLogger.event(
+                subsystem = "websocket",
+                event = "socket-open",
+                sessionId = session.sessionId,
+            )
             coroutineScope {
-                launch {
+                val micJob = launch(Dispatchers.Default) {
                     var chunksSent = 0
-                    microphoneChunks.collect { chunk ->
-                        if (!muted()) {
+                    var chunksTotal = 0
+                    var mutedLogged = false
+                    var firstChunkLogged = false
+                    SovaLogger.event(
+                        subsystem = "mic",
+                        event = "chunk-collector-start",
+                        sessionId = session.sessionId,
+                    )
+                    runCatching {
+                        microphoneChunks.collect { chunk ->
+                            if (!isActive) return@collect
+                            if (muted()) {
+                                if (!mutedLogged) {
+                                    SovaLogger.event(
+                                        subsystem = "mic",
+                                        event = "audio-send-muted",
+                                        sessionId = session.sessionId,
+                                    )
+                                    mutedLogged = true
+                                }
+                                return@collect
+                            }
+                            mutedLogged = false
+                            if (!firstChunkLogged) {
+                                SovaLogger.event(
+                                    subsystem = "mic",
+                                    event = "first-chunk-ready",
+                                    sessionId = session.sessionId,
+                                    details = mapOf("bytesBase64" to chunk.length.toString()),
+                                )
+                                firstChunkLogged = true
+                            }
                             send(buildJsonObject {
                                 put("type", "audio.chunk")
                                 put("audioBase64", chunk)
                                 put("format", "pcm16")
                             }.toString())
                             chunksSent += 1
+                            chunksTotal += 1
+                            if (chunksTotal == 1 || chunksTotal % 25 == 0) {
+                                SovaLogger.event(
+                                    subsystem = "websocket",
+                                    event = "audio-chunk-sent",
+                                    sessionId = session.sessionId,
+                                    details = mapOf("chunksTotal" to chunksTotal.toString()),
+                                )
+                            }
                             if (chunksSent >= 12) {
                                 send(buildJsonObject {
                                     put("type", "audio.end")
                                     put("format", "pcm16")
                                 }.toString())
+                                SovaLogger.event(
+                                    subsystem = "websocket",
+                                    event = "audio-end-sent",
+                                    sessionId = session.sessionId,
+                                    details = mapOf("chunksTotal" to chunksTotal.toString()),
+                                )
                                 chunksSent = 0
                             }
                         }
+                    }.onFailure {
+                        SovaLogger.event(
+                            subsystem = "mic",
+                            event = "chunk-collector-failed",
+                            sessionId = session.sessionId,
+                            details = mapOf("error" to (it.message ?: it::class.simpleName)),
+                        )
                     }
+                    SovaLogger.event(
+                        subsystem = "mic",
+                        event = "chunk-collector-finished",
+                        sessionId = session.sessionId,
+                    )
                 }
-                for (frame in incoming) {
-                    if (frame !is Frame.Text) continue
-                    val decoded = runCatching {
-                        json.decodeFromString(SpecialistStreamPayload.serializer(), frame.readText())
-                    }
-                    val payload = decoded.getOrNull()
-                    if (payload == null) {
-                        emit(SpecialistCallEvent.Error("Unable to read specialist call event."))
-                        continue
-                    }
-                    when (payload.type) {
-                        "session.started" -> emit(
-                            SpecialistCallEvent.Started(
-                                sessionId = payload.sessionId.orEmpty(),
-                                specialistName = payload.specialistName ?: "AI specialist",
-                            ),
-                        )
-                        "user.transcript.partial" -> Unit
-                        "user.transcript.final" -> emit(
-                            SpecialistCallEvent.Caption(
-                                SpecialistCallLine(
-                                    speaker = payload.speaker ?: "Patient",
-                                    text = payload.text.orEmpty(),
-                                    fromPatient = true,
-                                ),
-                            ),
-                        )
-                        "agent.transcript" -> emit(
-                            SpecialistCallEvent.Caption(
-                                SpecialistCallLine(
-                                    speaker = payload.speaker ?: "AI specialist",
-                                    text = payload.text.orEmpty(),
-                                    fromPatient = false,
-                                ),
-                            ),
-                        )
-                        "agent.audio" -> payload.audioBase64?.let {
-                            emit(SpecialistCallEvent.Audio(it, payload.format))
+                try {
+                    var firstFrameLogged = false
+                    for (frame in incoming) {
+                        if (frame !is Frame.Text) continue
+                        val text = frame.readText()
+                        if (!firstFrameLogged) {
+                            SovaLogger.event(
+                                subsystem = "websocket",
+                                event = "first-frame-received",
+                                sessionId = session.sessionId,
+                                details = mapOf("chars" to text.length.toString()),
+                            )
+                            firstFrameLogged = true
                         }
-                        "session.error" -> emit(SpecialistCallEvent.Error(payload.message ?: "Specialist call failed."))
-                        "session.ended" -> emit(SpecialistCallEvent.Ended)
+                        val decoded = runCatching {
+                            json.decodeFromString(SpecialistStreamPayload.serializer(), text)
+                        }
+                        val payload = decoded.getOrNull()
+                        if (payload == null) {
+                            SovaLogger.event(
+                                subsystem = "websocket",
+                                event = "frame-decode-failed",
+                                sessionId = session.sessionId,
+                                details = mapOf("error" to decoded.exceptionOrNull()?.message),
+                            )
+                            emit(SpecialistCallEvent.Error("Unable to read specialist call event."))
+                            continue
+                        }
+                        SovaLogger.event(
+                            subsystem = "websocket",
+                            event = "event-received",
+                            sessionId = session.sessionId,
+                            details = mapOf(
+                                "type" to payload.type,
+                                "speaker" to payload.speaker,
+                                "textChars" to payload.text?.length?.toString(),
+                            ),
+                        )
+                        when (payload.type) {
+                            "session.started" -> emit(
+                                SpecialistCallEvent.Started(
+                                    sessionId = payload.sessionId.orEmpty(),
+                                    specialistName = payload.specialistName ?: "AI specialist",
+                                ),
+                            )
+                            "user.transcript.partial" -> Unit
+                            "user.transcript.final" -> emit(
+                                SpecialistCallEvent.Caption(
+                                    SpecialistCallLine(
+                                        speaker = payload.speaker ?: "Patient",
+                                        text = payload.text.orEmpty(),
+                                        fromPatient = true,
+                                    ),
+                                ),
+                            )
+                            "agent.transcript" -> emit(
+                                SpecialistCallEvent.Caption(
+                                    SpecialistCallLine(
+                                        speaker = payload.speaker ?: "AI specialist",
+                                        text = payload.text.orEmpty(),
+                                        fromPatient = false,
+                                    ),
+                                ),
+                            )
+                            "agent.audio" -> payload.audioBase64?.let {
+                                emit(SpecialistCallEvent.Audio(it, payload.format))
+                            }
+                            "session.error" -> {
+                                val rawMessage = payload.message ?: "Specialist call failed."
+                                SovaLogger.event(
+                                    subsystem = "specialist-call",
+                                    event = "backend-session-error",
+                                    sessionId = session.sessionId,
+                                    details = mapOf(
+                                        "rawChars" to rawMessage.length.toString(),
+                                        "summary" to rawMessage.redactedProviderErrorSummary(),
+                                    ),
+                                )
+                                emit(SpecialistCallEvent.Error(rawMessage.toUserFacingCallError()))
+                            }
+                            "session.ended" -> emit(SpecialistCallEvent.Ended)
+                        }
                     }
+                } finally {
+                    SovaLogger.event(
+                        subsystem = "websocket",
+                        event = "receive-loop-finished",
+                        sessionId = session.sessionId,
+                    )
+                    micJob.cancelAndJoin()
+                    SovaLogger.event(
+                        subsystem = "mic",
+                        event = "chunk-collector-cancelled",
+                        sessionId = session.sessionId,
+                    )
                 }
             }
         }
+    }
+}
+
+private fun String.toUserFacingCallError(): String {
+    val lower = lowercase()
+    return when {
+        "unable to transcribe" in lower || "detected_unusual_activity" in lower || "401" in lower ->
+            "Still listening."
+        "eleven" in lower || "transcribe" in lower || "audio" in lower ->
+            "One moment."
+        "openai" in lower || "llm" in lower ->
+            "The specialist is reconnecting."
+        else -> "One moment."
+    }
+}
+
+private fun String.redactedProviderErrorSummary(): String {
+    val lower = lowercase()
+    return when {
+        "detected_unusual_activity" in lower -> "provider_401_detected_unusual_activity"
+        "401" in lower -> "provider_401"
+        "unable to transcribe" in lower -> "transcription_failed"
+        "eleven" in lower -> "voice_provider_error"
+        else -> take(120)
     }
 }
 

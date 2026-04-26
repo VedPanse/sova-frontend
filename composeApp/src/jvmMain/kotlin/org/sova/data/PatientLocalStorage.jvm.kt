@@ -14,6 +14,10 @@ actual object PatientLocalStorage {
         preferences.put(PatientIdKey, value)
     }
 
+    actual fun clearPatientId() {
+        preferences.remove(PatientIdKey)
+    }
+
     actual fun readDraft(): String? =
         preferences.get(DraftKey, null)
 

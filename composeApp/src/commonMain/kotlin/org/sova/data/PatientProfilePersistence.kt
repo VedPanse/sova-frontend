@@ -6,6 +6,7 @@ import org.sova.logic.PatientIdGenerator
 expect object PatientLocalStorage {
     fun readPatientId(): String?
     fun writePatientId(value: String)
+    fun clearPatientId()
     fun readDraft(): String?
     fun writeDraft(value: String)
     fun clearDraft()
@@ -33,5 +34,11 @@ object PatientProfilePersistence {
 
     fun clearDraft() {
         PatientLocalStorage.clearDraft()
+    }
+
+    fun resetPatient(): String {
+        PatientLocalStorage.clearDraft()
+        PatientLocalStorage.clearPatientId()
+        return patientId()
     }
 }

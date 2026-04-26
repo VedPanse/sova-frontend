@@ -13,6 +13,10 @@ actual object PatientLocalStorage {
         NSUserDefaults.standardUserDefaults.setObject(value, forKey = PatientIdKey)
     }
 
+    actual fun clearPatientId() {
+        NSUserDefaults.standardUserDefaults.removeObjectForKey(PatientIdKey)
+    }
+
     actual fun readDraft(): String? =
         NSUserDefaults.standardUserDefaults.stringForKey(DraftKey)
 

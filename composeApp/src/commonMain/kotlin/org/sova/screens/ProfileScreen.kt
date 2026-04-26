@@ -49,6 +49,7 @@ fun ProfileScreen(
     user: UserProfile,
     medical: MedicalProfile,
     onSave: (UserProfile, MedicalProfile) -> Unit,
+    onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var editingSection by remember { mutableStateOf<ProfileEditSection?>(null) }
@@ -62,6 +63,10 @@ fun ProfileScreen(
         onSave = { updatedUser, updatedMedical ->
             onSave(updatedUser, updatedMedical)
             editingSection = null
+        },
+        onLogout = {
+            editingSection = null
+            onLogout()
         },
         modifier = modifier,
     )
@@ -82,6 +87,7 @@ private fun ProfileSummaryScreen(
     onEdit: (ProfileEditSection) -> Unit,
     onCancel: () -> Unit,
     onSave: (UserProfile, MedicalProfile) -> Unit,
+    onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
@@ -143,6 +149,7 @@ private fun ProfileSummaryScreen(
             JournalCard {
                 JournalLabel("Data & privacy")
                 Text("Sova stores only your patient ID on this device. Profile updates sync through the secure backend.", color = HealthColors.TextSecondary, style = MaterialTheme.typography.bodyLarge)
+                SecondaryButton("Log out", onClick = onLogout)
             }
         }
     }
