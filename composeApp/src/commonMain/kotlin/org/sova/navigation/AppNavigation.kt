@@ -67,7 +67,6 @@ import org.sova.notifications.SystemNotifier
 import org.sova.screens.AgentConversationScreen
 import org.sova.screens.AgentsScreen
 import org.sova.screens.DashboardScreen
-import org.sova.screens.HistoryScreen
 import org.sova.screens.OnboardingScreen
 import org.sova.screens.ProfileScreen
 import org.sova.screens.RecommendedActionScreen
@@ -450,7 +449,6 @@ private fun RouteContent(
             onConversation = { onRoute(AppRoute.Conversation) },
             modifier = Modifier.fillMaxSize(),
         )
-        AppRoute.History -> HistoryScreen(DisplayContent.history, Modifier.fillMaxSize())
         AppRoute.Profile -> ProfileScreen(user, medical, onSave = onProfileSave, onLogout = onLogout, modifier = Modifier.fillMaxSize())
         AppRoute.Simulation -> SimulationScreen(user, simulationRun, simulation, onRunSimulation, Modifier.fillMaxSize())
         AppRoute.Conversation -> AgentConversationScreen(DisplayContent.conversation, simulation.recommendation, Modifier.fillMaxSize())
@@ -606,7 +604,6 @@ private fun NavItem(
 private val primaryRoutes = listOf(
     AppRoute.Home,
     AppRoute.Agents,
-    AppRoute.History,
     AppRoute.Profile,
 )
 
@@ -632,12 +629,6 @@ private fun RouteIcon(
                     drawLine(color, Offset(w * x, h * 0.80f), Offset(w * x, h * top), strokeWidth = stroke.width, cap = StrokeCap.Round)
                     drawCircle(color, radius = w * 0.05f, center = Offset(w * x, h * top))
                 }
-            }
-            AppRoute.History -> {
-                drawRect(color, topLeft = Offset(w * 0.26f, h * 0.18f), size = Size(w * 0.48f, h * 0.64f), style = stroke)
-                drawLine(color, Offset(w * 0.36f, h * 0.36f), Offset(w * 0.64f, h * 0.36f), strokeWidth = stroke.width, cap = StrokeCap.Round)
-                drawLine(color, Offset(w * 0.36f, h * 0.52f), Offset(w * 0.64f, h * 0.52f), strokeWidth = stroke.width, cap = StrokeCap.Round)
-                drawLine(color, Offset(w * 0.36f, h * 0.68f), Offset(w * 0.54f, h * 0.68f), strokeWidth = stroke.width, cap = StrokeCap.Round)
             }
             AppRoute.Profile -> {
                 drawCircle(color, radius = w * 0.13f, center = Offset(w * 0.50f, h * 0.32f), style = stroke)
