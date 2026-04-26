@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_URL="https://sova-agents.onrender.com"
+PATIENT_ID="CR-003"
+
+PAYLOAD='{
+  "patientId": "CR-003",
+  "Age": 58,
+  "Gender": "female",
+  "Surgery": "Total knee replacement (right)",
+  "DischargeDate": "2026-04-22",
+  "RiskLevel": "Medium",
+  "BloodPressure": "128/82",
+  "HeartRate": 76,
+  "Allergies": "None",
+  "CurrentMedications": "Warfarin 5mg (irregular compliance), Ibuprofen 400mg",
+  "EmergencyContactName": "Linda Park",
+  "EmergencyContactPhone": "+14155550199",
+  "severity": 1,
+  "stage": 1,
+  "vitals": {
+    "HeartRate": 104,
+    "BloodPressure": "134/86",
+    "Temperature": 99.1,
+    "TimeStamp": "2026-04-25T08:45:00"
+  },
+  "anomaly_level": 2,
+  "interval": 60
+}'
+
+curl -sS -X POST "${BASE_URL}/start-debate/${PATIENT_ID}" \
+  -H "Content-Type: application/json" \
+  --data "${PAYLOAD}" > /dev/null
+
+curl -N -sS "${BASE_URL}/stream/${PATIENT_ID}"

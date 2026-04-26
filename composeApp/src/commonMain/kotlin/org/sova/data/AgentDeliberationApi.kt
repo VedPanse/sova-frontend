@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
 import org.sova.logic.ProfileValidation
 import org.sova.model.AgentDeliberationDecision
 import org.sova.model.AgentDeliberationMessage
@@ -24,23 +27,40 @@ import org.sova.model.DeliberationStance
 import org.sova.model.MedicalProfile
 import org.sova.model.UserProfile
 import org.sova.model.Vitals
+import kotlin.time.Clock
 
 @Serializable
 data class AgentDeliberationStartRequest(
-    @SerialName("patient_id") val patientId: String,
-    val age: Int,
-    val gender: String,
-    val diagnosis: String,
-    @SerialName("heart_rate") val heartRate: Double,
-    val spo2: Double,
-    val symptoms: List<String> = emptyList(),
-    val medications: List<AgentMedicationPayload> = emptyList(),
-    val trigger: String = "post_discharge_monitoring",
+    val patientId: String,
+    @SerialName("Age") val age: Int,
+    @SerialName("Gender") val gender: String,
+    @SerialName("DateOfBirth") val dateOfBirth: String? = null,
+    @SerialName("Address") val address: String? = null,
+    @SerialName("Surgery") val surgery: String,
+    @SerialName("DischargeDate") val dischargeDate: String,
+    @SerialName("RiskLevel") val riskLevel: String,
+    @SerialName("BloodPressure") val bloodPressure: String? = null,
+    @SerialName("HeartRate") val heartRate: Int? = null,
+    @SerialName("Allergies") val allergies: String? = null,
+    @SerialName("CurrentMedications") val currentMedications: String? = null,
+    @SerialName("DoctorPhoneNumber") val doctorPhoneNumber: String? = null,
+    @SerialName("EmergencyContactName") val emergencyContactName: String? = null,
+    @SerialName("EmergencyContactPhone") val emergencyContactPhone: String? = null,
+    val severity: Int? = null,
+    val stage: Int? = null,
+    val vitals: AgentVitalsPayload? = null,
+    @SerialName("anomaly_level") val anomalyLevel: Int? = null,
+    val interval: Int? = null,
+    @SerialName("webhook_url") val webhookUrl: String? = null,
 )
 
 @Serializable
-data class AgentMedicationPayload(
-    val name: String,
+data class AgentVitalsPayload(
+    @SerialName("HeartRate") val heartRate: Int? = null,
+    @SerialName("BloodPressure") val bloodPressure: String? = null,
+    @SerialName("Temperature") val temperature: Double? = null,
+    @SerialName("TimeStamp") val timestamp: String? = null,
+    @SerialName("SpO2") val spo2: Int? = null,
 )
 
 @Serializable
@@ -133,17 +153,39 @@ object AgentDeliberationApi {
 fun UserProfile.toAgentDeliberationStartRequest(
     medical: MedicalProfile,
     vitals: Vitals,
-): AgentDeliberationStartRequest =
-    AgentDeliberationStartRequest(
+): AgentDeliberationStartRequest {
+    val riskLevel = riskLevelFor(vitals)
+    val severity = severityFor(riskLevel)
+    val dischargeIso = dischargeDate?.let(ProfileValidation::toIsoDate)
+    return AgentDeliberationStartRequest(
         patientId = patientId,
         age = ProfileValidation.ageFromDob(dob) ?: 0,
         gender = sex,
-        diagnosis = surgery?.takeIf { it.isNotBlank() } ?: "Post-discharge recovery",
-        heartRate = vitals.heartRate?.toDouble() ?: 0.0,
-        spo2 = vitals.spo2?.toDouble() ?: 0.0,
-        symptoms = emptyList(),
-        medications = medical.medications.map { AgentMedicationPayload(it) },
+        dateOfBirth = ProfileValidation.toIsoDate(dob),
+        address = address?.takeIf { it.isNotBlank() },
+        surgery = surgery?.takeIf { it.isNotBlank() } ?: "Post-discharge recovery",
+        dischargeDate = dischargeIso ?: Clock.System.todayIn(TimeZone.currentSystemDefault()).toString(),
+        riskLevel = riskLevel,
+        bloodPressure = vitals.bloodPressure?.takeIf { it.isNotBlank() },
+        heartRate = vitals.heartRate,
+        allergies = medical.allergies.joinToString(", ").ifBlank { "None" },
+        currentMedications = medical.medications.joinToString(", ").ifBlank { "None" },
+        doctorPhoneNumber = doctorPhoneNumber?.takeIf { it.isNotBlank() },
+        emergencyContactName = emergencyContactName.takeIf { it.isNotBlank() },
+        emergencyContactPhone = emergencyContactPhone.takeIf { it.isNotBlank() },
+        severity = severity,
+        stage = dischargeIso?.let(::stageForDischargeDate),
+        vitals = AgentVitalsPayload(
+            heartRate = vitals.heartRate,
+            bloodPressure = vitals.bloodPressure?.takeIf { it.isNotBlank() },
+            temperature = vitals.temperature,
+            timestamp = vitals.timestamp?.takeIf { it.isNotBlank() },
+            spo2 = vitals.spo2,
+        ),
+        anomalyLevel = anomalyLevelFor(riskLevel),
+        interval = intervalFor(riskLevel),
     )
+}
 
 @Serializable
 private data class StreamPayload(
@@ -232,5 +274,55 @@ private fun inferStance(statement: String): DeliberationStance {
         listOf("agree", "support", "reasonable", "continue", "stable").any { it in text } -> DeliberationStance.Support
         listOf("recommend", "consensus", "decision", "final").any { it in text } -> DeliberationStance.Decision
         else -> DeliberationStance.Observe
+    }
+}
+
+private fun riskLevelFor(vitals: Vitals): String {
+    val heartRate = vitals.heartRate
+    val spo2 = vitals.spo2
+    val temperature = vitals.temperature
+    return when {
+        spo2 != null && spo2 < 92 -> "High"
+        heartRate != null && heartRate > 115 -> "High"
+        temperature != null && temperature >= 101.0 -> "High"
+        spo2 != null && spo2 < 95 -> "Medium"
+        heartRate != null && heartRate > 100 -> "Medium"
+        temperature != null && temperature >= 100.4 -> "Medium"
+        else -> "Low"
+    }
+}
+
+private fun severityFor(riskLevel: String): Int =
+    when (riskLevel) {
+        "High" -> 2
+        "Medium" -> 1
+        else -> 0
+    }
+
+private fun anomalyLevelFor(riskLevel: String): Int =
+    when (riskLevel) {
+        "High" -> 3
+        "Medium" -> 2
+        else -> 0
+    }
+
+private fun intervalFor(riskLevel: String): Int =
+    when (riskLevel) {
+        "High" -> 30
+        "Medium" -> 60
+        else -> 300
+    }
+
+private fun stageForDischargeDate(value: String): Int? {
+    val discharge = runCatching { LocalDate.parse(value) }.getOrNull() ?: return null
+    val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+    val days = today.toEpochDays() - discharge.toEpochDays()
+    return when {
+        days <= 0 -> 0
+        days <= 3 -> 1
+        days <= 7 -> 2
+        days <= 14 -> 3
+        days <= 28 -> 4
+        else -> 5
     }
 }

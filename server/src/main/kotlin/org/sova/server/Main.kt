@@ -168,6 +168,8 @@ data class SyncResponse(
 data class VitalsResponse(
     val patientId: String,
     val heartRate: Int? = null,
+    val hrv: Int? = null,
+    val sleepHours: Double? = null,
     val bloodPressure: String? = null,
     val temperature: Double? = null,
     val timestamp: String? = null,
@@ -426,15 +428,35 @@ class BigQueryPatientProfileRepository {
 
 class BigQueryVitalsRepository {
     private val bigQuery = createBigQueryService()
+    private val tableId = TableId.of("automaticbalancetransfer", "sova", "vitals")
     private val table = "`automaticbalancetransfer.sova.vitals`"
+    private val schemaColumns: List<String> by lazy { loadSchemaColumns() }
+    private val patientIdColumn: String? by lazy { resolveColumn("patient identifier", patientIdCandidates) }
 
     fun latest(patientId: String): VitalsResponse? {
         if (patientId.isBlank()) return null
+        val idColumn = patientIdColumn ?: run {
+            serverLogger.severe("Unable to read latest vitals: no patient identifier column found in $table")
+            return null
+        }
+        val heartRateColumn = resolveColumn("heart rate", listOf("HeartRate", "heart_rate", "resting_heart_rate", "avg_heart_rate"))
+        val hrvColumn = resolveColumn("HRV", listOf("hrv", "HRV"))
+        val sleepColumn = resolveColumn("sleep", listOf("sleep_hours", "SleepHours", "sleep_duration_hours"))
+        val bloodPressureColumn = resolveColumn("blood pressure", listOf("BloodPressure", "blood_pressure"))
+        val temperatureColumn = resolveColumn("temperature", listOf("Temperature", "temperature"))
+        val timestampColumn = resolveColumn("timestamp", listOf("TimeStamp", "timestamp", "Timestamp", "date"))
         val sql = """
-            SELECT patientId, HeartRate, BloodPressure, Temperature, TimeStamp
+            SELECT
+              `$idColumn` AS patientId,
+              ${numberSelect(heartRateColumn, "heartRate")},
+              ${numberSelect(hrvColumn, "hrv")},
+              ${numberSelect(sleepColumn, "sleepHours")},
+              ${stringSelect(bloodPressureColumn, "bloodPressure")},
+              ${numberSelect(temperatureColumn, "temperature")},
+              ${timestampSelect(timestampColumn, "timestamp")}
             FROM $table
-            WHERE patientId = @patientId
-            ORDER BY TimeStamp DESC
+            WHERE `$idColumn` = @patientId
+            ORDER BY `${timestampColumn ?: idColumn}` DESC
             LIMIT 1
         """.trimIndent()
         val rows = requireBigQuery().query(
@@ -445,16 +467,58 @@ class BigQueryVitalsRepository {
         val row = rows.iterateAll().firstOrNull() ?: return null
         return VitalsResponse(
             patientId = row["patientId"].stringValue,
-            heartRate = row["HeartRate"].intOrNull(),
-            bloodPressure = row["BloodPressure"].stringOrEmpty().ifBlank { null },
-            temperature = row["Temperature"].doubleOrNull(),
-            timestamp = row["TimeStamp"].stringOrEmpty().ifBlank { null },
+            heartRate = row["heartRate"].intOrNull(),
+            hrv = row["hrv"].intOrNull(),
+            sleepHours = row["sleepHours"].doubleOrNull(),
+            bloodPressure = row["bloodPressure"].stringOrEmpty().ifBlank { null },
+            temperature = row["temperature"].doubleOrNull(),
+            timestamp = row["timestamp"].stringOrEmpty().ifBlank { null },
         )
     }
 
     private fun requireBigQuery(): BigQuery =
         bigQuery ?: throw BigQueryCredentialsMissingException()
+
+    private fun loadSchemaColumns(): List<String> {
+        val table = requireBigQuery().getTable(tableId)
+        val fields = table?.getDefinition<com.google.cloud.bigquery.TableDefinition>()?.schema?.fields?.map { it.name }.orEmpty()
+        if (fields.isEmpty()) {
+            serverLogger.severe("Unable to read vitals table schema for $tableId")
+        }
+        return fields
+    }
+
+    private fun resolveColumn(label: String, candidates: List<String>): String? {
+        val column = candidates.firstNotNullOfOrNull { candidate ->
+            schemaColumns.firstOrNull { it.equals(candidate, ignoreCase = true) }
+        } ?: candidates.firstNotNullOfOrNull { candidate ->
+            val normalizedCandidate = candidate.normalizedColumnName()
+            schemaColumns.firstOrNull { it.normalizedColumnName() == normalizedCandidate }
+        }
+        if (column == null) {
+            serverLogger.info("Vitals table does not include a $label column. Available columns: ${schemaColumns.joinToString()}")
+        } else if (column !in candidates) {
+            serverLogger.info("Using vitals $label column `$column`.")
+        }
+        return column
+    }
+
+    private fun numberSelect(column: String?, alias: String): String =
+        if (column == null) "CAST(NULL AS FLOAT64) AS $alias" else "`$column` AS $alias"
+
+    private fun stringSelect(column: String?, alias: String): String =
+        if (column == null) "CAST(NULL AS STRING) AS $alias" else "`$column` AS $alias"
+
+    private fun timestampSelect(column: String?, alias: String): String =
+        if (column == null) "CAST(NULL AS STRING) AS $alias" else "CAST(`$column` AS STRING) AS $alias"
+
+    private companion object {
+        val patientIdCandidates = listOf("patientId", "patient_id", "PatientId", "PatientID", "user_id", "userId")
+    }
 }
+
+private fun String.normalizedColumnName(): String =
+    replace("_", "").lowercase()
 
 private fun com.google.cloud.bigquery.FieldValue.stringOrEmpty(): String =
     if (isNull) "" else stringValue
@@ -463,7 +527,9 @@ private fun com.google.cloud.bigquery.FieldValue.stringOrNone(): String =
     if (isNull || stringValue.isBlank()) "None" else stringValue
 
 private fun com.google.cloud.bigquery.FieldValue.intOrNull(): Int? =
-    if (isNull) null else longValue.toInt()
+    if (isNull) null else runCatching { longValue.toInt() }
+        .getOrElse { runCatching { doubleValue.toInt() }.getOrNull() }
 
 private fun com.google.cloud.bigquery.FieldValue.doubleOrNull(): Double? =
-    if (isNull) null else doubleValue
+    if (isNull) null else runCatching { doubleValue }
+        .getOrElse { runCatching { longValue.toDouble() }.getOrNull() }

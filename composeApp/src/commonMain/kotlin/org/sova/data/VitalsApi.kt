@@ -12,6 +12,8 @@ import org.sova.model.Vitals
 data class LatestVitalsPayload(
     val patientId: String,
     val heartRate: Int? = null,
+    val hrv: Int? = null,
+    val sleepHours: Double? = null,
     val bloodPressure: String? = null,
     val temperature: Double? = null,
     val timestamp: String? = null,
@@ -19,6 +21,8 @@ data class LatestVitalsPayload(
     fun toVitals(): Vitals =
         Vitals(
             heartRate = heartRate,
+            hrv = hrv,
+            sleepHours = sleepHours,
             bloodPressure = bloodPressure?.takeIf { it.isNotBlank() },
             temperature = temperature,
             timestamp = timestamp,
