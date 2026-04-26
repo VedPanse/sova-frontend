@@ -35,6 +35,7 @@ import org.sova.design.HealthColors
 import org.sova.design.HealthShapes
 import org.sova.design.HealthSpacing
 import org.sova.model.RiskLevel
+import org.sova.model.MedicalProfile
 import org.sova.model.SimulationResult
 import org.sova.model.Specialist
 import org.sova.model.UserProfile
@@ -43,6 +44,7 @@ import org.sova.model.Vitals
 @Composable
 fun DashboardScreen(
     user: UserProfile,
+    medical: MedicalProfile,
     vitals: Vitals,
     result: SimulationResult,
     specialists: List<Specialist>,
@@ -57,6 +59,7 @@ fun DashboardScreen(
     activeSpecialist?.let { specialist ->
         SpecialistCallView(
             user = user,
+            medical = medical,
             specialist = specialist,
             onBack = { activeSpecialist = null },
             modifier = modifier.fillMaxWidth(),

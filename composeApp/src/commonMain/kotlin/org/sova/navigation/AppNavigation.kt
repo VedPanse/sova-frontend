@@ -429,6 +429,7 @@ private fun RouteContent(
     when (route) {
         AppRoute.Home -> DashboardScreen(
             user = user,
+            medical = medical,
             vitals = vitals,
             result = simulation,
             specialists = specialists,

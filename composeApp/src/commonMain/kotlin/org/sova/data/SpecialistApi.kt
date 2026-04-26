@@ -25,10 +25,12 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.sova.logging.SovaLogger
+import org.sova.model.MedicalProfile
 import org.sova.model.Specialist
 import org.sova.model.SpecialistCallEvent
 import org.sova.model.SpecialistCallLine
 import org.sova.model.SpecialistCallSession
+import org.sova.model.UserProfile
 import kotlin.random.Random
 import kotlin.time.TimeSource
 
@@ -36,6 +38,7 @@ import kotlin.time.TimeSource
 private data class SpecialistCallStartRequest(
     val specialistId: String,
     val clientSessionId: String,
+    val patientContext: PatientProfilePayload? = null,
 )
 
 @Serializable
@@ -76,14 +79,27 @@ object SpecialistApi {
             fallbackSpecialists()
         }
 
-    suspend fun startCall(patientId: String, specialistId: String): SpecialistCallSession {
+    suspend fun startCall(
+        patientId: String,
+        specialistId: String,
+        user: UserProfile? = null,
+        medical: MedicalProfile? = null,
+    ): SpecialistCallSession {
         val mark = TimeSource.Monotonic.markNow()
+        val patientContext = if (user != null && medical != null) {
+            user.toPatientProfilePayload(medical)
+        } else {
+            null
+        }
         SovaLogger.event(
             subsystem = "specialist-call",
             event = "post-start-request",
             patientId = patientId,
             specialistId = specialistId,
-            details = mapOf("url" to "$HttpBaseUrl/v1/patients/$patientId/specialist-calls"),
+            details = mapOf(
+                "url" to "$HttpBaseUrl/v1/patients/$patientId/specialist-calls",
+                "hasPatientContext" to (patientContext != null).toString(),
+            ),
         )
         val response = client.post("$HttpBaseUrl/v1/patients/$patientId/specialist-calls") {
             contentType(ContentType.Application.Json)
@@ -91,6 +107,7 @@ object SpecialistApi {
                 SpecialistCallStartRequest(
                     specialistId = specialistId,
                     clientSessionId = "kmp-${Random.nextLong().toString(16)}",
+                    patientContext = patientContext,
                 ),
             )
         }.body<SpecialistCallStartResponse>()

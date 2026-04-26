@@ -89,6 +89,7 @@ fun AgentsScreen(
     activeSpecialist?.let { specialist ->
         SpecialistCallView(
             user = user,
+            medical = medical,
             specialist = specialist,
             onBack = {
                 SovaLogger.event(
@@ -236,6 +237,7 @@ private fun DeliberationStandbyCard(modifier: Modifier = Modifier) {
 @Composable
 fun SpecialistCallView(
     user: UserProfile,
+    medical: MedicalProfile,
     specialist: Specialist,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -296,7 +298,7 @@ fun SpecialistCallView(
         debugState = SpecialistCallDebugState(phase = "starting session", mic = "not requested")
         runCatching {
             val session = withTimeout(12_000) {
-                SpecialistApi.startCall(user.patientId, specialist.id)
+                SpecialistApi.startCall(user.patientId, specialist.id, user, medical)
             }
             debugState = debugState.copy(
                 phase = "opening socket",
