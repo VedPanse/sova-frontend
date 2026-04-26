@@ -12,4 +12,7 @@ actual object SpecialistCallAudio {
     actual suspend fun playAgentAudio(audioBase64: String, format: String) {
         SovaLogger.event(subsystem = "specialist-call", event = "agent-audio-playback-not-implemented", details = mapOf("platform" to "wasmJs", "format" to format))
     }
+    actual fun stopAgentAudio(reason: String) {
+        SovaLogger.event(subsystem = "specialist-call", event = "agent-audio-stop-not-implemented", details = mapOf("platform" to "wasmJs", "reason" to reason))
+    }
 }

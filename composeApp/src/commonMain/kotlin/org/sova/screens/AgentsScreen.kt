@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -270,6 +271,29 @@ fun SpecialistCallView(
             )
         }
     }
+    fun endCall(reason: String) {
+        SovaLogger.event(
+            subsystem = "ui",
+            event = "specialist-call-end-requested",
+            patientId = user.patientId,
+            specialistId = specialist.id,
+            details = mapOf("reason" to reason),
+        )
+        SpecialistCallAudio.stopAgentAudio(reason)
+        onBack()
+    }
+
+    DisposableEffect(user.patientId, specialist.id) {
+        onDispose {
+            SovaLogger.event(
+                subsystem = "ui",
+                event = "specialist-call-screen-disposed",
+                patientId = user.patientId,
+                specialistId = specialist.id,
+            )
+            SpecialistCallAudio.stopAgentAudio("call-screen-disposed")
+        }
+    }
 
     LaunchedEffect(user.patientId, specialist.id, callState) {
         if (callState !is SpecialistCallState.Connecting) return@LaunchedEffect
@@ -337,17 +361,18 @@ fun SpecialistCallView(
                     details = mapOf("state" to microphoneAccess.toString(), "muted" to muted.toString()),
                 )
             }
-            SpecialistApi.observeCall(
-                session = session,
-                microphoneChunks = SpecialistCallAudio.microphoneChunks(),
-                muted = { muted || microphoneAccess != MicrophoneAccessState.Granted },
-            ).collect { event ->
-                debugState = debugState.copy(
-                    phase = "streaming",
-                    socket = "open",
-                    lastEvent = event.debugName(),
-                )
-                when (event) {
+            try {
+                SpecialistApi.observeCall(
+                    session = session,
+                    microphoneChunks = SpecialistCallAudio.microphoneChunks(),
+                    muted = { muted || microphoneAccess != MicrophoneAccessState.Granted },
+                ).collect { event ->
+                    debugState = debugState.copy(
+                        phase = "streaming",
+                        socket = "open",
+                        lastEvent = event.debugName(),
+                    )
+                    when (event) {
                     is SpecialistCallEvent.Started -> {
                         val existing = callState as? SpecialistCallState.Connected
                         callState = existing ?: SpecialistCallState.Connected()
@@ -425,7 +450,17 @@ fun SpecialistCallView(
                             sessionId = session.sessionId,
                         )
                     }
+                    }
                 }
+            } finally {
+                SovaLogger.event(
+                    subsystem = "specialist-call",
+                    event = "call-collector-ended",
+                    patientId = user.patientId,
+                    specialistId = specialist.id,
+                    sessionId = session.sessionId,
+                )
+                SpecialistCallAudio.stopAgentAudio("call-collector-ended")
             }
         }.onFailure {
             val existing = callState as? SpecialistCallState.Connected
@@ -448,7 +483,7 @@ fun SpecialistCallView(
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(HealthSpacing.Md)) {
         item {
-            CircularBackButton(onClick = onBack)
+            CircularBackButton(onClick = { endCall("back-button") })
         }
         item {
             BoxWithConstraints {
@@ -467,12 +502,12 @@ fun SpecialistCallView(
                             }
                         },
                         onRequestMicrophone = ::requestMicrophone,
-                        onEndCall = onBack,
+                        onEndCall = { endCall("end-call-button") },
                     )
                 } else if (failed) {
                     FailedCallCard(specialist, callState as SpecialistCallState.Failed)
                 } else {
-                    ConnectingCallCard(specialist, onEndCall = onBack)
+                    ConnectingCallCard(specialist, onEndCall = { endCall("end-call-button") })
                 }
             }
         }

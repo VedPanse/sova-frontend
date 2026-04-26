@@ -52,9 +52,38 @@ actual object SpecialistCallAudio {
             var noiseFloor = 140.0
             var lastLoggedChunk = 0
             var highEnergyChunks = 0
+            var playbackGateLogged = false
             while (currentCoroutineContext().isActive) {
                 val read = line.read(buffer, 0, buffer.size)
                 if (read > 0) {
+                    if (isAgentPlaybackActive()) {
+                        if (!playbackGateLogged) {
+                            playbackGateLogged = true
+                            SovaLogger.event(subsystem = "mic", event = "desktop-capture-paused-for-agent-audio")
+                        }
+                        if (speechActive) {
+                            emit(AudioEndMarker)
+                            SovaLogger.event(
+                                subsystem = "mic",
+                                event = "speech-end-detected",
+                                details = mapOf(
+                                    "speechChunks" to speechChunks.toString(),
+                                    "silentChunks" to silentChunksAfterSpeech.toString(),
+                                    "reason" to "agent-playback-started",
+                                ),
+                            )
+                        }
+                        speechActive = false
+                        speechChunks = 0
+                        silentChunksAfterSpeech = 0
+                        lastLoggedChunk = 0
+                        highEnergyChunks = 0
+                        continue
+                    }
+                    if (playbackGateLogged) {
+                        playbackGateLogged = false
+                        SovaLogger.event(subsystem = "mic", event = "desktop-capture-resumed-after-agent-audio")
+                    }
                     val level = pcm16Rms(buffer, read)
                     if (!speechActive) {
                         noiseFloor = (noiseFloor * 0.96) + (level * 0.04)
@@ -178,6 +207,10 @@ actual object SpecialistCallAudio {
         )
     }
 
+    actual fun stopAgentAudio(reason: String) {
+        stopCurrentPlayback(reason)
+    }
+
     private fun isMacOs(): Boolean =
         System.getProperty("os.name").lowercase().contains("mac")
 
@@ -214,6 +247,9 @@ actual object SpecialistCallAudio {
             }
         }
     }
+
+    private fun isAgentPlaybackActive(): Boolean =
+        activePlayback.get()?.isAlive == true || activePlaybackLine.get()?.isOpen == true
 
     private fun playWithAfplay(audioBytes: ByteArray, format: String): Boolean {
         val suffix = when (format) {
