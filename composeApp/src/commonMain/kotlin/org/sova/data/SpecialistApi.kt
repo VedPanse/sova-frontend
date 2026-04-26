@@ -59,6 +59,7 @@ private data class SpecialistStreamPayload(
 object SpecialistApi {
     private const val HttpBaseUrl = "https://sova-agents.onrender.com"
     private const val WsBaseUrl = "wss://sova-agents.onrender.com"
+    private const val AudioEndMarker = "__SOVA_AUDIO_END__"
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val client = sovaHttpClient().config {
         install(ContentNegotiation) { json(json) }
@@ -125,8 +126,8 @@ object SpecialistApi {
             )
             coroutineScope {
                 val micJob = launch(Dispatchers.Default) {
-                    var chunksSent = 0
                     var chunksTotal = 0
+                    var chunksInTurn = 0
                     var mutedLogged = false
                     var firstChunkLogged = false
                     SovaLogger.event(
@@ -137,6 +138,31 @@ object SpecialistApi {
                     runCatching {
                         microphoneChunks.collect { chunk ->
                             if (!isActive) return@collect
+                            if (chunk == AudioEndMarker) {
+                                if (chunksInTurn > 0) {
+                                    send(buildJsonObject {
+                                        put("type", "audio.end")
+                                        put("format", "pcm16")
+                                    }.toString())
+                                    SovaLogger.event(
+                                        subsystem = "websocket",
+                                        event = "audio-end-sent",
+                                        sessionId = session.sessionId,
+                                        details = mapOf(
+                                            "chunksTotal" to chunksTotal.toString(),
+                                            "chunksInTurn" to chunksInTurn.toString(),
+                                        ),
+                                    )
+                                    chunksInTurn = 0
+                                } else {
+                                    SovaLogger.event(
+                                        subsystem = "websocket",
+                                        event = "audio-end-skipped-empty-turn",
+                                        sessionId = session.sessionId,
+                                    )
+                                }
+                                return@collect
+                            }
                             if (muted()) {
                                 if (!mutedLogged) {
                                     SovaLogger.event(
@@ -163,28 +189,18 @@ object SpecialistApi {
                                 put("audioBase64", chunk)
                                 put("format", "pcm16")
                             }.toString())
-                            chunksSent += 1
                             chunksTotal += 1
+                            chunksInTurn += 1
                             if (chunksTotal == 1 || chunksTotal % 25 == 0) {
                                 SovaLogger.event(
                                     subsystem = "websocket",
                                     event = "audio-chunk-sent",
                                     sessionId = session.sessionId,
-                                    details = mapOf("chunksTotal" to chunksTotal.toString()),
+                                    details = mapOf(
+                                        "chunksTotal" to chunksTotal.toString(),
+                                        "chunksInTurn" to chunksInTurn.toString(),
+                                    ),
                                 )
-                            }
-                            if (chunksSent >= 12) {
-                                send(buildJsonObject {
-                                    put("type", "audio.end")
-                                    put("format", "pcm16")
-                                }.toString())
-                                SovaLogger.event(
-                                    subsystem = "websocket",
-                                    event = "audio-end-sent",
-                                    sessionId = session.sessionId,
-                                    details = mapOf("chunksTotal" to chunksTotal.toString()),
-                                )
-                                chunksSent = 0
                             }
                         }
                     }.onFailure {
