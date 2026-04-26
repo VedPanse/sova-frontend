@@ -48,6 +48,7 @@ private data class SpecialistCallStartResponse(
 private data class SpecialistStreamPayload(
     val type: String,
     val sessionId: String? = null,
+    val turnId: String? = null,
     val specialistName: String? = null,
     val speaker: String? = null,
     val text: String? = null,
@@ -60,6 +61,7 @@ object SpecialistApi {
     private const val HttpBaseUrl = "https://sova-agents.onrender.com"
     private const val WsBaseUrl = "wss://sova-agents.onrender.com"
     private const val AudioEndMarker = "__SOVA_AUDIO_END__"
+    private const val SpeechStartMarker = "__SOVA_SPEECH_START__"
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val client = sovaHttpClient().config {
         install(ContentNegotiation) { json(json) }
@@ -138,6 +140,19 @@ object SpecialistApi {
                     runCatching {
                         microphoneChunks.collect { chunk ->
                             if (!isActive) return@collect
+                            if (chunk == SpeechStartMarker) {
+                                send(buildJsonObject {
+                                    put("type", "audio.speech_start")
+                                    put("turnId", "turn-$chunksTotal")
+                                }.toString())
+                                SovaLogger.event(
+                                    subsystem = "websocket",
+                                    event = "audio-speech-start-sent",
+                                    sessionId = session.sessionId,
+                                    details = mapOf("chunksTotal" to chunksTotal.toString()),
+                                )
+                                return@collect
+                            }
                             if (chunk == AudioEndMarker) {
                                 if (chunksInTurn > 0) {
                                     send(buildJsonObject {
@@ -219,6 +234,8 @@ object SpecialistApi {
                 }
                 try {
                     var firstFrameLogged = false
+                    val audioChunkBuffers = mutableMapOf<String, StringBuilder>()
+                    val audioChunkFormats = mutableMapOf<String, String>()
                     for (frame in incoming) {
                         if (frame !is Frame.Text) continue
                         val text = frame.readText()
@@ -283,6 +300,30 @@ object SpecialistApi {
                             )
                             "agent.audio" -> payload.audioBase64?.let {
                                 emit(SpecialistCallEvent.Audio(it, payload.format))
+                            }
+                            "agent.audio.chunk" -> payload.audioBase64?.let { chunk ->
+                                val turnId = payload.turnId ?: payload.sessionId ?: "current"
+                                val buffer = audioChunkBuffers.getOrPut(turnId) { StringBuilder() }
+                                buffer.append(chunk)
+                                audioChunkFormats[turnId] = payload.format
+                                SovaLogger.event(
+                                    subsystem = "websocket",
+                                    event = "agent-audio-chunk-buffered",
+                                    sessionId = session.sessionId,
+                                    details = mapOf(
+                                        "turnId" to turnId,
+                                        "chunkChars" to chunk.length.toString(),
+                                        "totalChars" to buffer.length.toString(),
+                                    ),
+                                )
+                            }
+                            "agent.audio.end" -> {
+                                val turnId = payload.turnId ?: payload.sessionId ?: "current"
+                                val audio = audioChunkBuffers.remove(turnId)?.toString()
+                                val format = audioChunkFormats.remove(turnId) ?: payload.format
+                                if (!audio.isNullOrBlank()) {
+                                    emit(SpecialistCallEvent.Audio(audio, format))
+                                }
                             }
                             "session.error" -> {
                                 val rawMessage = payload.message ?: "Specialist call failed."

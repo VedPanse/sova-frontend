@@ -18,7 +18,9 @@ import org.sova.logging.SovaLogger
 
 actual object SpecialistCallAudio {
     private const val AudioEndMarker = "__SOVA_AUDIO_END__"
+    private const val SpeechStartMarker = "__SOVA_SPEECH_START__"
     private val activePlayback = AtomicReference<Process?>(null)
+    private val activePlaybackLine = AtomicReference<SourceDataLine?>(null)
 
     actual fun microphoneChunks(): Flow<String> = flow {
         SovaLogger.event(subsystem = "mic", event = "desktop-capture-flow-created")
@@ -40,7 +42,7 @@ actual object SpecialistCallAudio {
         }
 
         try {
-            val buffer = ByteArray(3_200)
+            val buffer = ByteArray(1_600)
             line.start()
             SovaLogger.event(subsystem = "mic", event = "desktop-capture-started")
             var firstChunkLogged = false
@@ -75,6 +77,7 @@ actual object SpecialistCallAudio {
                         speechChunks = 0
                         silentChunksAfterSpeech = 0
                         stopCurrentPlayback("user-speech-start")
+                        emit(SpeechStartMarker)
                         SovaLogger.event(
                             subsystem = "mic",
                             event = "speech-start-detected",
@@ -105,7 +108,7 @@ actual object SpecialistCallAudio {
                                 ),
                             )
                         }
-                        if (silentChunksAfterSpeech >= 9 && speechChunks >= 4) {
+                        if (silentChunksAfterSpeech >= 8 && speechChunks >= 6) {
                             emit(AudioEndMarker)
                             SovaLogger.event(
                                 subsystem = "mic",
@@ -147,12 +150,10 @@ actual object SpecialistCallAudio {
             details = mapOf("format" to normalizedFormat, "bytes" to audioBytes.size.toString()),
         )
 
-        val played = if (isMacOs()) {
-            playWithAfplay(audioBytes, normalizedFormat)
-        } else if (normalizedFormat == "wav") {
-            playWavWithJavaSound(audioBytes)
-        } else {
-            false
+        val played = when {
+            normalizedFormat == "wav" -> playWavWithJavaSound(audioBytes)
+            isMacOs() -> playWithAfplay(audioBytes, normalizedFormat)
+            else -> false
         }
 
         SovaLogger.event(
@@ -181,13 +182,22 @@ actual object SpecialistCallAudio {
     }
 
     private fun stopCurrentPlayback(reason: String) {
-        val process = activePlayback.getAndSet(null) ?: return
+        val process = activePlayback.getAndSet(null)
+        val line = activePlaybackLine.getAndSet(null)
+        if (process == null && line == null) return
         SovaLogger.event(
             subsystem = "specialist-call",
             event = "agent-audio-playback-interrupted",
             details = mapOf("reason" to reason),
         )
-        process.destroy()
+        process?.destroy()
+        line?.let {
+            runCatching {
+                it.stop()
+                it.flush()
+                it.close()
+            }
+        }
     }
 
     private fun playWithAfplay(audioBytes: ByteArray, format: String): Boolean {
@@ -227,17 +237,21 @@ actual object SpecialistCallAudio {
                 val format = input.format
                 val info = DataLine.Info(SourceDataLine::class.java, format)
                 val line = (AudioSystem.getLine(info) as SourceDataLine).apply { open(format) }
+                activePlaybackLine.set(line)
                 line.use {
                     it.start()
                     val buffer = ByteArray(4096)
-                    while (true) {
+                    while (it.isOpen) {
                         val read = input.read(buffer, 0, buffer.size)
                         if (read <= 0) break
                         it.write(buffer, 0, read)
                     }
-                    it.drain()
-                    it.stop()
+                    if (it.isOpen) {
+                        it.drain()
+                        it.stop()
+                    }
                 }
+                activePlaybackLine.compareAndSet(line, null)
             }
             true
         } catch (error: Throwable) {
@@ -248,6 +262,7 @@ actual object SpecialistCallAudio {
             )
             false
         } finally {
+            activePlaybackLine.getAndSet(null)?.close()
             tempFile.delete()
         }
     }
